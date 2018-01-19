@@ -6,10 +6,13 @@ class TestBot:
     def vote(self,time,event):
         print time, event
 
-nodes = []
-bc = ActiveBlockChain(reactor,nodes)
+print "Constructing ActiveBlockChain"
+bc = ActiveBlockChain(reactor)
+print "Constructing bot"
 tb = TestBot()
+print "Regestering bot"
 bc.register_bot(tb,"testbot")
+print "Starting bot"
 bc.start()
-
+print "Starting main event loop"
 reactor.run()
