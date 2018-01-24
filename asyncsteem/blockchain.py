@@ -12,7 +12,7 @@ class ActiveBlockChain:
         self.reactor = reactor
         self.nodes=nodes
         self.bots = dict()
-        self.blk = 12345678
+        self.blk = 18888888
         self.rpc = jsonrpc.Client(reactor,nodes,self)
     def register_bot(self,bot,botname, persistence = False, blockchain_timers = {"hour" : 3600, "day" : 86400, "week" : 604800},rich_events = ["vote"]):
         newbot = dict()
@@ -20,14 +20,14 @@ class ActiveBlockChain:
         self.bots[botname] = newbot
     def start(self):
         self.rpc.get_block(self.blk)
-    def block(self,blk):
+    def __call__(self,blk):
         ts = blk["timestamp"]
         print "=== BLOCK " + str(self.blk) + " " + ts + " ==="
         for transaction in blk["transactions"]:
             for operation in transaction["operations"]:
                 et = operation[0]
                 obj = operation[1]
-                print ts, et, obj
+                #print ts, et, obj
         self.blk = self.blk + 1
         self.start()
 

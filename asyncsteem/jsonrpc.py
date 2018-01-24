@@ -28,7 +28,7 @@ class Client:
         self.id = self.id + 1
         my_id = self.id
         def cbBody(body):
-            self.cb.block(json.loads(body)["result"])
+            self.cb(json.loads(body)["result"])
         def handle_response(response):
             d = readBody(response)
             d.addCallback(cbBody)
