@@ -21,20 +21,27 @@ class StringProducer(object):
 class Client:
     def __init__(self,reactor,nodes,cb):
         self.nodes = nodes
+        self.node_index = 0
         self.agent = Agent(reactor)
         self.cb = cb
         self.id = 0
+    def next_node(self):
+        self.node_index = (self.node_index + 1) % len(self.nodes)
     def handlerFunctionClosure(self,name):
         self.id = self.id + 1
         my_id = self.id
         def cbBody(body):
-            self.cb(json.loads(body)["result"])
+            obj = json.loads(body)
+            if "result" in obj.keys():
+                self.cb(obj["result"])
         def handle_response(response):
             d = readBody(response)
             d.addCallback(cbBody)
             return d
         def handle_error(error):
-            print error.value.reasons[0]
+            print "Error:",error.value.reasons[0]
+            self.next_node()
+            self.cb(None)
         def handlerFunction(*args):
             callobj = dict()
             callobj["jsonrpc"] = "2.0"
@@ -42,7 +49,7 @@ class Client:
             callobj["id"] = self.id
             callobj["params"] = args
             jo = json.dumps(callobj)
-            url = "https://" + self.nodes[0] + "/"
+            url = "https://" + self.nodes[self.node_index] + "/"
             d = self.agent.request('POST',
                               url,
                               Headers({'User-Agent': ['Async Steem for Python v0.01'], "Content-Type": ["application/json"]}),

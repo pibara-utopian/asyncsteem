@@ -1,5 +1,12 @@
 import jsonrpc
 
+class VotesEnhancer:
+    def __init__(self,abc,block):
+        self.abc = abc
+        self.block = block
+    def start(self):
+        self.abc.start()
+
 class ActiveBlockChain:
     def __init__(self,reactor,nodes=["rpc.buildteam.io",
                                         "steemd.minnowsupportproject.org",
@@ -12,7 +19,7 @@ class ActiveBlockChain:
         self.reactor = reactor
         self.nodes=nodes
         self.bots = dict()
-        self.blk = 18888888
+        self.blk = 19273700
         self.rpc = jsonrpc.Client(reactor,nodes,self)
     def register_bot(self,bot,botname, persistence = False, blockchain_timers = {"hour" : 3600, "day" : 86400, "week" : 604800},rich_events = ["vote"]):
         newbot = dict()
@@ -21,13 +28,13 @@ class ActiveBlockChain:
     def start(self):
         self.rpc.get_block(self.blk)
     def __call__(self,blk):
-        ts = blk["timestamp"]
-        print "=== BLOCK " + str(self.blk) + " " + ts + " ==="
-        for transaction in blk["transactions"]:
-            for operation in transaction["operations"]:
-                et = operation[0]
-                obj = operation[1]
-                #print ts, et, obj
-        self.blk = self.blk + 1
-        self.start()
+        if blk != None and "timestamp" in blk:
+            ts = blk["timestamp"]
+            print "=== BLOCK " + str(self.blk) + " " + ts + " ==="
+            veh = VotesEnhancer(self,blk)
+            self.blk = self.blk + 1
+            veh.start()
+        else:
+            print("-spin")
+            self.start()
 
