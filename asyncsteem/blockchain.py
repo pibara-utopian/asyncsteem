@@ -39,8 +39,10 @@ class ActiveBlockChain:
         self.active_events = dict() #The list of events the active bots are subscribed to.
         self.ddt = None
         self.last_ddt = None
+        self.synced = False
         self.count = 0
         self.parallel = parallel
+        self.eventtypes = set()
     def register_bot(self,bot,botname):
         #Each method of the object not starting with an underscore is a handler of operation events
         for key in dir(bot):
@@ -92,6 +94,10 @@ class ActiveBlockChain:
             if ddt !=None:
                 if self.last_ddt == None or self.last_ddt < ddt:
                     self.last_ddt = ddt
+                    if self.synced == False and (dt.now() - self.last_ddt).seconds < 240:
+                        print "Synced :", ts
+                        print blk
+                        self.synced  = True
                 if self.ddt == None:
                     self.ddt = ddt
                 else:
@@ -153,6 +159,9 @@ class ActiveBlockChain:
                     if "operations" in blk["transactions"][index] and isinstance(blk["transactions"][index]["operations"],list):
                         for oindex in range(0,len(blk["transactions"][index]["operations"])):
                             operation = blk["transactions"][index]["operations"][oindex]
+                            if not operation[0] in self.eventtypes:
+                                print colored(operation[0],"yellow")
+                                self.eventtypes.add(operation[0])
                             if isinstance(operation,list) and \
                                len(operation) == 2 and \
                                (isinstance(operation[0],str) or isinstance(operation[0],unicode)) and \
