@@ -3,14 +3,15 @@
 3) Figure out the premature 'synced' bug.
 4) Make an asyncsteem version of watching the watchers (without posting and scp)
 5) Add signed operations
-6) Completely port watching the watchers to asyncsteem
-7) Port @croupierbot to asyncsteem
-8) Port all of the steempersist bots to asyncsteem
-9) Look at performance of core loop
-10) Add comment strings everywhere
-11) Test code coverage
-12) Release version 1.0
-13) Make codebase cross version compatible (Python 3 as well as 2)
-14) Evaluate Twisted vs AsyncIO for the Python 3 version and implement properly
-15) Make a little demo GUI with cefpython
-16) Release version 2.0
+6) Persistance and restart after process was stopped
+7) Completely port watching the watchers to asyncsteem
+8) Port @croupierbot to asyncsteem
+9) Port all of the steempersist bots to asyncsteem
+10) Look at performance of core loop
+11) Add comment strings everywhere
+12) Test code coverage
+13) Release version 1.0
+14) Make codebase cross version compatible (Python 3 as well as 2)
+15) Evaluate Twisted vs AsyncIO for the Python 3 version and implement properly
+16) Make a little demo GUI with cefpython
+17) Release version 2.0
