@@ -4,6 +4,8 @@ from twisted.web.iweb import IBodyProducer
 from twisted.internet import defer
 import time
 import json 
+from termcolor import colored
+
 
 class StringProducer(object):
     #implements(IBodyProducer)
@@ -19,9 +21,10 @@ class StringProducer(object):
         pass
 
 class Client:
-    def __init__(self,reactor,nodes,cb):
+    def __init__(self,reactor,nodes,cb,parallel=8):
         self.nodes = nodes
         self.node_index = 0
+        self.parallel = parallel
         self.reactor = reactor
         self.agent = Agent(reactor)
         self.cb = cb
@@ -29,14 +32,19 @@ class Client:
         self.starttime = -1
         self.timeoutCall = None
         self.last_rotate = 0
-        print "Starting off with node",nodes[self.node_index]
+        self.errorcount = 0
+        print colored("Starting off with node "+nodes[self.node_index],"blue")
     def next_node(self,reason):
         now = time.time()
         ago = now - self.last_rotate
-        if ago > 26:
+        self.errorcount = self.errorcount + 1
+        if ago > 26 or self.errorcount >= self.parallel:
             self.last_rotate = now
             self.node_index = (self.node_index + 1) % len(self.nodes)
-            print "Switching to node",self.nodes[self.node_index],":",reason
+            self.errorcount = 0
+            print colored("Switching to node " + self.nodes[self.node_index],"blue"),":",colored(reason,'red')
+        else:
+            print " - ["+str(self.errorcount)+ "] ",colored(reason,'red')
     def handlerFunctionClosure(self,name):
         self.id = self.id + 1
         my_id = self.id
@@ -54,7 +62,10 @@ class Client:
             if obj != None and "result" in obj.keys():
                 self.cb(obj["result"]) 
             else:
-                self.cb(dict())
+                if obj == None:
+                    self.cb(None)
+                else:
+                    print "OBJ:",obj
         def handle_response(response):
             if self.timeoutCall.active():
                 self.timeoutCall.cancel()
@@ -86,4 +97,9 @@ class Client:
         return handlerFunction
     def __getattr__(self,name):
         return self.handlerFunctionClosure(name)
+    def __eq__(self,val):
+        if val == None:
+            return False
+        else:
+            return True
 
