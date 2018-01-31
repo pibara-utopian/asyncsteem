@@ -23,6 +23,8 @@ class AsyncQueue:
         self.rpc = jsonrpc.Client(reactor,nodes,self,parallel)
         self.id = 0
         self.command_queue = list()
+        self.parallel = parallel
+        self.active = 0
     def __getattr__(self,name):
         return self._handlerFunctionClosure(name)
     def _handlerFunctionClosure(self,name):
@@ -31,4 +33,12 @@ class AsyncQueue:
             return CallbackAdd(self,name,a)
         return handlerFunction
     def _do_work(self):
-        print "DEBUG:", self.command_queue
+        while len(self.command_queue) > 0 and self.active < self.parallel:
+             e = self.command_queue.pop(0)
+             name = e[0]
+             arguments = e[1]
+             callback = e[2]
+             #FIXME: see blockchain.py, we need to call the actual jsonrpc here.
+             print "FIXME:",name,arguments
+            
+

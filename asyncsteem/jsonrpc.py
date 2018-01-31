@@ -21,7 +21,7 @@ class StringProducer(object):
         pass
 
 class Client:
-    def __init__(self,reactor,nodes,cb,parallel=8):
+    def __init__(self,reactor,nodes,cb,parallel=8): #Static callback probably bad idea
         self.nodes = nodes
         self.node_index = 0
         self.parallel = parallel
@@ -94,6 +94,7 @@ class Client:
             self.timeoutCall = self.reactor.callLater(15, d.cancel)
             self.starttime = time.time()
             return d
+            #FIXME: see queue.py, we should allow a callback to be added here.
         return handlerFunction
     def __getattr__(self,name):
         return self.handlerFunctionClosure(name)
