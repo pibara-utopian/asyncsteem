@@ -1,15 +1,16 @@
-1) Fix the static callbavk for jsonrpc
+1) Fix the static callback for jsonrpc
 2) Complete queue.py
-3) Make an asyncsteem version of watching the watchers (without posting and scp)
-4) Add signed operations
-5) Completely port watching the watchers to asyncsteem
-6) Port @croupierbot to asyncsteem
-7) Port all of the steempersist bots to asyncsteem
-8) Look at performance of core loop
-9) Add comment strings everywhere
-10) Test code coverage
-11) Release version 1.0
-12) Make codebase cross version compatible (Python 3 as well as 2)
-13) Evaluate Twisted vs AsyncIO for the Python 3 version and implement properly
-14) Make a little demo GUI with cefpython
-15) Release version 2.0
+3) Figure out the premature 'synced' bug.
+4) Make an asyncsteem version of watching the watchers (without posting and scp)
+5) Add signed operations
+6) Completely port watching the watchers to asyncsteem
+7) Port @croupierbot to asyncsteem
+8) Port all of the steempersist bots to asyncsteem
+9) Look at performance of core loop
+10) Add comment strings everywhere
+11) Test code coverage
+12) Release version 1.0
+13) Make codebase cross version compatible (Python 3 as well as 2)
+14) Evaluate Twisted vs AsyncIO for the Python 3 version and implement properly
+15) Make a little demo GUI with cefpython
+16) Release version 2.0
