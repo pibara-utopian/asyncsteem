@@ -31,4 +31,4 @@ class AsyncQueue:
             return CallbackAdd(self,name,a)
         return handlerFunction
     def _do_work(self):
-        pass
+        print "DEBUG:", self.command_queue

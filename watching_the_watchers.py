@@ -1,6 +1,6 @@
 #!/usr/bin/python
 from twisted.internet import reactor
-from asyncsteem import ActiveBlockChain
+from asyncsteem import ActiveBlockChain, AsyncQueue
 from datetime import timedelta
 import time
 from termcolor import colored
@@ -11,9 +11,13 @@ class WatchingTheWatchersBot:
         self.hourcount = 0
         self.start = time.time()
         self.last = time.time()
+        self.queue = AsyncQueue(reactor)
+    def _comment(self,obj):
+        print "OBJ:", obj
     def vote(self,tm,event,cont):
         if event["weight"] < 0:
             print colored(str(tm),"cyan"),colored("@" + event["voter"],"yellow"),"=> "+colored("@"+event["author"],"green") + "/" + event["permlink"]
+            self.queue.get_comment(event["author"],event["permlink"])(self._comment)
     def hour(self,tm,event,cont):
         self.hourcount = self.hourcount + 1
         now = time.time()
