@@ -257,7 +257,7 @@ if __name__ == "__main__":
                               vote["rshares"],"(",\
                               start_rshares , "->" , start_rshares + float(vote["rshares"]) , ")"
                 #Update the total rshares recorded before our downvote
-                start_rshares = start_rshares + vote["rshares"]
+                start_rshares = start_rshares + float(vote["rshares"])
         #Set the above closure as callback.
         opp.on_result(process_content)
     #This is a bit fiddly at this low level,  start nextblock a bit higer than where we start out
