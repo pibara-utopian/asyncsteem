@@ -181,4 +181,6 @@ You've seen the example using *get\_content*, this is one of a wide range of JSO
 * verify\_account\_authority
 * verify\_authority
 
+You will need to look elsewhere for now for documentation on the above API calls. When unsure about the exact syntax, please make sure to use an on\_error callback. Often the error messages can provide some info on correct usage.
 
+As stated, the library is in early beta now. I would very much appreciate any feedback on my work so far, so please test out what there is and let me know what needs improvement. 
