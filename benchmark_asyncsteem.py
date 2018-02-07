@@ -1,9 +1,10 @@
 #!/usr/bin/python
-from twisted.internet import reactor
-from asyncsteem import ActiveBlockChain
+import sys
 from datetime import timedelta
 import time
 from termcolor import colored
+from twisted.internet import reactor
+from asyncsteem import ActiveBlockChain
 
 class TestBot:
     def __init__(self):
@@ -11,7 +12,7 @@ class TestBot:
         self.hourcount = 0
         self.start = time.time()
         self.last = time.time()
-    def block(self,tm,event,cont):
+    def block(self,tm,event,client):
         chunk = 100
         self.blocks = self.blocks + 1
         if self.blocks % chunk == 0:
@@ -22,7 +23,7 @@ class TestBot:
             avspeed = int(self.blocks*1000/total_duration)*1.0/1000
             print colored("* "+str(chunk)+" blocks processed in "+str(duration)+" seconds. Speed "+ str(speed) + " blocks per second. Avg:"+ str(avspeed),"green"),tm
             self.last = now
-    def hour(self,tm,event,cont):
+    def hour(self,tm,event,client):
         self.hourcount = self.hourcount + 1
         now = time.time()
         total_duration = str(timedelta(seconds=now-self.start))
@@ -32,13 +33,11 @@ class TestBot:
             reactor.stop()
 
 print "Constructing ActiveBlockChain"
-bc = ActiveBlockChain(reactor,rewind_days=7,parallel = 8)
+bc = ActiveBlockChain(reactor,rewind_days=7)
 print "Constructing bot"
 tb = TestBot()
 print "Regestering bot"
 bc.register_bot(tb,"benchmark")
-print "Starting bot"
-bc.start()
 print "Starting main event loop"
 reactor.run()
 print "Done"

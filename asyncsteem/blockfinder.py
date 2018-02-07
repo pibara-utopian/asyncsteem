@@ -1,65 +1,82 @@
+#!/usr/bin/python
 import dateutil.parser
-import jsonrpc
-from termcolor import colored
 
-class DateFinder:
-    def __init__(self,reactor,date,callback,nodes=["rpc.buildteam.io",
-                                                   "steemd.minnowsupportproject.org",
-                                                   "steemd.pevo.science",
-                                                   "rpc.steemviz.com",
-                                                   "seed.bitcoiner.me",
-                                                   "rpc.steemliberator.com",
-                                                   "api.steemit.com",
-                                                   "steemd.privex.io"],rpc=None):
-        self.reactor = reactor #Twisted reactor to use
-        self.nodes=nodes
-        #if rpc == None:
-        self.rpc = jsonrpc.Client(reactor,nodes,self)
-        #else:
-        #    self.rpc = rpc
-        self.date = date
-        self.reactor = reactor
-        self.callback = callback
-        self.upper_limit = -1
+class DateFinder(object):
+    def __init__(self,client):
+        self.rpc = client
+        self.active_queries = 0
+    def __call__(self,on_found,trigger_time=None,best_guess=5000000):
+        def process_global_config(config_event,cclient):
+            on_found(config_event["last_irreversible_block_num"])
+        if trigger_time == None:
+            cmd = self.rpc.get_dynamic_global_properties()
+            cmd.on_result(process_global_config)
+            return
         self.lower_limit = 0
-        self.best_guess = None
-        print "DateFinder created for",date
-    def __call__(self,blk):
-        print " - DateFinder looking at",self.best_guess
-        if blk != None and "timestamp" in blk:
-            ts = blk["timestamp"]
-            ddt = dateutil.parser.parse(ts)
-            if ddt < self.date:
-                #Our best guess was to early
-                if self.upper_limit > 0 and self.upper_limit - self.best_guess < 2:
-                    #Seems our upper limit is our match.
-                    print "DateFinder found block:",self.best_guess+1
-                    self.callback(self.best_guess+1)
-                else:
-                    #Make our previous best guess our lower limit and try again
-                    self.lower_limit = self.best_guess
-                    self.start()
-            else:
-                #Our best guess was either to late or spot on.
-                if self.best_guess - self.lower_limit < 2:
-                    #Seems our best guess is indeed our match.
-                    print "DateFinder found block:",self.best_guess
-                    self.callback(self.best_guess)
-                else:
-                    self.upper_limit = self.best_guess
-                    self.start()
-        else:
-            if blk != None:
-                print "Oops, ( Blk", self.best_guess,")",self.lower_limit,self.upper_limit,blk
-            self.upper_limit = self.best_guess 
-            self.start()
-    def start(self):
-        if self.upper_limit == -1:
-            #We haven't seen anything above the target date yet, we need to look higher
-            if self.lower_limit < 1:
-                self.best_guess = 5000000
-            else:
-                self.best_guess = self.lower_limit * 3
-        else:
-            self.best_guess = int((self.upper_limit + self.lower_limit)/2)
-        self.rpc.get_block(self.best_guess)
+        self.upper_limit = -1
+        self.found = False
+        def get_block(blk,ndx):
+            def process_block(event, client):
+                if not self.found:
+                    self.active_queries = self.active_queries - 1
+                    if event != None and "timestamp" in event:
+                        ddt = dateutil.parser.parse(event["timestamp"])
+                        if ddt < trigger_time:
+                            #Our guess was to early
+                            if blk > self.lower_limit: 
+                                if self.upper_limit > 0 and self.upper_limit - blk < 2:
+                                    self.found = True
+                                    on_found(blk)
+                                else:
+                                    self.lower_limit =blk
+                                    if self.upper_limit == -1:
+                                        client.logger.info("Looking for block in range "+str(self.lower_limit)+"... ?")
+                                    else:
+                                        client.logger.info("Looking for block in range " + \
+                                                           str(self.lower_limit) + \
+                                                           "..." + \
+                                                           str(self.upper_limit) )
+                        else:
+                            #Our best guess was either to late or spot on.
+                            if self.upper_limit == -1 or blk <= self.upper_limit: 
+                                if blk - self.lower_limit < 2:
+                                    self.found = True
+                                    on_found(blk)
+                                else:
+                                    self.upper_limit = blk
+                                    client.logger.info("Looking for block in range " + \
+                                                       str(self.lower_limit) + \
+                                                       "..." + \
+                                                       str(self.upper_limit) )
+                    else:
+                        if event != None:
+                            print "Oops, ( Blk", self.best_guess,")",self.lower_limit,self.upper_limit,blk
+                        else:
+                            self.upper_limit = blk
+                    if not self.found:
+                        if self.upper_limit != -1:
+                            nexttry = self.lower_limit + (self.upper_limit - self.lower_limit)*(ndx+1)/4
+                            get_block(nexttry,ndx)
+                        else:
+                            nexttry = int(self.lower_limit * (0.75*ndx + 1.75))
+                            get_block(nexttry,ndx)
+            opp = self.rpc.get_block(blk)
+            self.active_queries = self.active_queries + 1
+            opp.on_result(process_block)
+        get_block(5000000,0)
+        get_block(10000000,1)
+        get_block(15000000,2)
+
+if __name__ == "__main__":
+    from twisted.internet import reactor
+    from jsonrpc import RpcClient
+    from datetime import date
+    from dateutil import relativedelta
+    def process_blockno(bno):
+        print "BLOCK: ",bno
+    rpcclient = RpcClient(reactor)
+    datefinder = DateFinder(rpcclient)
+    ddt = date.today() - relativedelta.relativedelta(hour=0,days=1)
+    datefinder(process_blockno,ddt)
+    rpcclient()
+    reactor.run()

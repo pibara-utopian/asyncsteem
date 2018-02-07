@@ -1,5 +1,5 @@
 from blockchain import ActiveBlockChain
 from blockfinder import DateFinder
-from queued import AsyncQueue
+from jsonrpc import RpcClient
 
-__all__ = ['blockchain','blockfinder','queued']
+__all__ = ['blockchain','blockfinder','jsonrpc']
