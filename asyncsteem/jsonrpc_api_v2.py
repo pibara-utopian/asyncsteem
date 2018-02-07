@@ -1,11 +1,46 @@
 #!/usr/bin/python
 """Version of the JSON-RPC library that should work as soon as full-API nodes start implementing the actual JSON-RPC specification"""
+from __future__ import print_function
 import time
 import json
 from termcolor import colored
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.internet import defer
+
+try:
+    from termcolor import colored
+    class DefaultLogger(object):
+        def __init__(self):
+            self.prefix = "jsonrpc"
+        def set_prefix(self, prefix):
+            self.prefix = prefix
+        def log(self,message,explanation,color):
+            print(colored(self.prefix,"yellow"),":",colored(message,color),explanation)
+        def error(self,message,explanation=""):
+            self.log(message,explanation,"red")
+        def warning(self,message,explanation=""):
+            self.log(message,explanation,"cyan")
+        def notice(self,message,explanation=""):
+            self.log(message,explanation,"green")
+        def info(self,message,explanation=""):
+            self.log(message,explanation,"blue")
+except:
+    class DefaultLogger(object):
+        def __init__(self):
+            self.prefix = "jsonrpc"
+        def set_prefix(self, prefix):
+            self.prefix = prefix
+        def log(message,explanation):
+            print(self.prefix,":",message,"#",explanation)
+        def error(self,message,explanation=""):
+            self.log(message,explanation)
+        def warning(self,message,explanation=""):
+            self.log(message,explanation)
+        def notice(self,message,explanation=""):
+            self.log(message,explanation)
+        def info(self,message,explanation=""):
+            self.log(message,explanation)
 
 class _StringProducer(object):
     """Helper class, implements IBodyProducer"""
@@ -26,13 +61,14 @@ class _StringProducer(object):
 
 class QueueEntry(object):
     """Helper class for managing in-queue JSON-RPC command invocations"""
-    def __init__(self, arpcclient, command, arguments, cmd_id):
+    def __init__(self, arpcclient, command, arguments, cmd_id, logger):
         self.rpcclient = arpcclient
         self.command = command
         self.arguments = arguments
         self.cmd_id = cmd_id
         self.result_callback = None
         self.error_callback = None
+        self.logger = logger
     def on_result(self, callback):
         """Set the on_result callback"""
         self.result_callback = callback
@@ -52,29 +88,29 @@ class QueueEntry(object):
         if self.result_callback != None:
             try:
                 self.result_callback(result, self.rpcclient)
-            except Exception, ex:
-                print colored("Error in result handler for '" +
+            except Exception as ex:
+                self.logger.error("Error in result handler for '" +
                               self.command +
-                              "' command result :" +
-                              str(ex), "red")
+                              "' command result :",
+                              str(ex))
         else:
-            print colored("Error: no on_result defined for '" +
+            self.logger.error("Error: no on_result defined for '" +
                           self.command +
-                          "' command result", "red")
+                          "' command result")
     def _handle_error(self, errno, msg):
         """Call the supplied user error handler or act as default error handler."""
         if self.error_callback != None:
             try:
                 self.error_callback(errno, msg, rpcclient)
-            except Exception, ex:
-                print colored("Error in error handler for '" +
+            except Exception as ex:
+                self.logger.error("Error in error handler for '" +
                               self.command +
-                              "' command result :" +
-                              str(ex), "red")
+                              "' command result :",
+                              str(ex))
         else:
-            print colored("Notice: no on_error defined for '" +
+            self.logger.error("Notice: no on_error defined for '" +
                           self.command +
-                          "' command result", "blue")
+                          "' command result")
 
 
 
@@ -92,7 +128,8 @@ class RpcClient(object):
                         "steemd.privex.io"],
                  parallel=16,
                  max_batch_size=1,
-                 rpc_timeout=15):
+                 rpc_timeout=15,
+                 logger = DefaultLogger()):
         """Constructor for asynchonour JSON-RPC client"""
         self.reactor = areactor
         self.nodes = nodes
@@ -107,19 +144,18 @@ class RpcClient(object):
         self.entries = dict()
         self.queue = list()
         self.active_call_count = 0
-        print colored("Starting off with node "+nodes[self.node_index], "blue")
+        self.logger = logger
+        self.logger.info("Starting off with node "+nodes[self.node_index])
     def _next_node(self, reason):
         now = time.time()
         ago = now - self.last_rotate
         self.errorcount = self.errorcount + 1
         if ago > self.rpc_timeout or self.errorcount >= self.parallel:
+            self.logger.notice("Swithing from " + self.nodes[self.node_index] + " to an other node due to error",reason)
             self.last_rotate = now
             self.node_index = (self.node_index + 1) % len(self.nodes)
             self.errorcount = 0
-            print colored("Switching to node " + self.nodes[self.node_index], "blue") + \
-                  ":" + colored(reason, 'red')
-        else:
-            print " - ["+str(self.errorcount)+ "] ", colored(reason, 'red')
+            self.logger.info("Switching to node " + self.nodes[self.node_index])
     def __call__(self):
         """Invoke the object to send out some of the queued commands to a server"""
         dv = None
@@ -144,6 +180,7 @@ class RpcClient(object):
                 qarr.append(self.entries[num]._get_rpc_call_object())
             jo = json.dumps(qarr)
         url = "https://" + self.nodes[self.node_index] + "/"
+        url = str.encode(url)
         deferred = self.agent.request('POST',
                                       url,
                                       Headers({"User-Agent"  : ['Async Steem for Python v0.01'],
@@ -164,12 +201,12 @@ class RpcClient(object):
                                 msg = reply["error"]["message"]
                             match._handle_error(reply["error"]["code"], msg)
                         else:
-                            print colored("Error: Invalid JSON-RPC response entry.", "red")
+                            self.logger.error("Error: Invalid JSON-RPC response entry.")
                     del self.entries[reply_id]
                 else:
-                    print colored("Error: Invalid JSON-RPC id in entry:"+str(reply_id), "red")
+                    self.logger.error("Error: Invalid JSON-RPC id in entry:"+str(reply_id))
             else:
-                print colored("Error: Invalid JSON-RPC response without id in entry:"+str(reply_id), "red")
+                self.logger.error("Error: Invalid JSON-RPC response without id in entry:"+str(reply_id))
         def handle_response(response):
             """Handle response for JSON-RPC batch query invocation."""
             if timeoutCall.active():
@@ -179,7 +216,7 @@ class RpcClient(object):
                 results = None
                 try:
                     results = json.loads(bodystring)
-                except Exception, ex:
+                except Exception as ex:
                     self._next_node("Non-JSON response from server")
                     self.queue = subqueue + self.queue
                     self.active_call_count = self.active_call_count - 1
@@ -192,11 +229,11 @@ class RpcClient(object):
                             for reply in results:
                                 process_one_result(reply)
                         else:
-                            print colored("Error: Invalid JSON-RPC response, expecting list as response on batch.", "red")
+                            self.logger.error("Error: Invalid JSON-RPC response, expecting list as response on batch.")
                     for request_id in subqueue:
                         if request_id in self.entries:
                             del self.entries[request_id]
-                            print colored("Error: No response entry for request entry in result:"+str(request_id), "red")
+                            self.logger.error("Error: No response entry for request entry in result:"+str(request_id))
                     self.active_call_count = self.active_call_count - 1
                     self()
             deferred2 = readBody(response)
@@ -219,7 +256,7 @@ class RpcClient(object):
         def addQueueEntry(*args):
             """Return a new in-queue JSON-RPC command invocation object with auto generated command name from __getattr__."""
             self.cmd_seq = self.cmd_seq + 1
-            self.entries[self.cmd_seq] = QueueEntry(self, name, args, self.cmd_seq)
+            self.entries[self.cmd_seq] = QueueEntry(self, name, args, self.cmd_seq, self.logger)
             self.queue.append(self.cmd_seq)
             return self.entries[self.cmd_seq]
         return addQueueEntry
@@ -245,17 +282,17 @@ if __name__ == "__main__":
                 if vote["voter"] == vote_event["voter"] and vote["rshares"] < 0:
                     #Diferentiate between attenuating downvotes and reputation eating flags.
                     if start_rshares + float(vote["rshares"]) < 0:
-                        print vote["time"],\
+                        print(vote["time"],\
                               "FLAG",\
                               vote["voter"],"=>",vote_event["author"],\
                               vote["rshares"]," rshares (",\
-                              start_rshares , "->", start_rshares + float(vote["rshares"]) , ")" 
+                              start_rshares , "->", start_rshares + float(vote["rshares"]) , ")")
                     else:
-                        print vote["time"],\
+                        print(vote["time"],\
                               "DOWNVOTE",\
                               vote["voter"],"=>",vote_event["author"],\
                               vote["rshares"],"(",\
-                              start_rshares , "->" , start_rshares + float(vote["rshares"]) , ")"
+                              start_rshares , "->" , start_rshares + float(vote["rshares"]) , ")")
                 #Update the total rshares recorded before our downvote
                 start_rshares = start_rshares + float(vote["rshares"])
         #Set the above closure as callback.
