@@ -49,15 +49,12 @@ class DateFinder(object):
                                                        "..." + \
                                                        str(self.upper_limit) + " (" + str(self.upper_limit - self.lower_limit) + ") - " + str(ndx) + " " + str(blk))
                     else:
-                        if event != None:
-                            print "Oops, ( Blk", self.best_guess,")",self.lower_limit,self.upper_limit,blk
-                        else:
-                            if self.upper_limit > blk or self.upper_limit == -1:
-                                self.upper_limit = blk
-                                client.logger.info("Looking for block in range " + \
-                                                   str(self.lower_limit) + \
-                                                   "..." + \
-                                                   str(self.upper_limit) + " (" + str(self.upper_limit - self.lower_limit) + ") None " + str(ndx)+ " " + str(blk))
+                        if self.upper_limit > blk or self.upper_limit == -1:
+                            self.upper_limit = blk
+                            client.logger.info("Looking for block in range " + \
+                                               str(self.lower_limit) + \
+                                               "..." + \
+                                               str(self.upper_limit) + " (" + str(self.upper_limit - self.lower_limit) + ") None " + str(ndx)+ " " + str(blk))
                     if not self.found:
                         if self.upper_limit != -1:
                             nexttry = self.lower_limit + (self.upper_limit - self.lower_limit)*(ndx+1)/4

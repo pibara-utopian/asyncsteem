@@ -7,40 +7,7 @@ from termcolor import colored
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.internet import defer
-
-try:
-    from termcolor import colored
-    class DefaultLogger(object):
-        def __init__(self):
-            self.prefix = "jsonrpc"
-        def set_prefix(self, prefix):
-            self.prefix = prefix
-        def log(self,message,explanation,color):
-            print(colored(self.prefix,"yellow"),":",colored(message,color),explanation)
-        def error(self,message,explanation=""):
-            self.log(message,explanation,"red")
-        def warning(self,message,explanation=""):
-            self.log(message,explanation,"cyan")
-        def notice(self,message,explanation=""):
-            self.log(message,explanation,"green")
-        def info(self,message,explanation=""):
-            self.log(message,explanation,"blue")
-except:
-    class DefaultLogger(object):
-        def __init__(self):
-            self.prefix = "jsonrpc"
-        def set_prefix(self, prefix):
-            self.prefix = prefix
-        def log(message,explanation):
-            print(self.prefix,":",message,"#",explanation)
-        def error(self,message,explanation=""):
-            self.log(message,explanation)
-        def warning(self,message,explanation=""):
-            self.log(message,explanation)
-        def notice(self,message,explanation=""):
-            self.log(message,explanation)
-        def info(self,message,explanation=""):
-            self.log(message,explanation)
+from asyncsteem.logger import DefaultLogger
 
 class _StringProducer(object):
     """Helper class, implements IBodyProducer"""

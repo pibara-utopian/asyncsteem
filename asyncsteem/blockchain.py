@@ -30,6 +30,8 @@ class ActiveBlockChain:
         self.synced = False
         self.count = 0
         self.eventtypes = set()
+        self.sync_block = None
+        self.active_block_queries = 0
         self.rpc()
     def register_bot(self,bot,botname):
         #Each method of the object not starting with an underscore is a handler of operation events
@@ -42,16 +44,33 @@ class ActiveBlockChain:
                 self.active_events[key][botname] = getattr(bot,key)
     def _get_block(self,blockno):
         def process_block_event(event,client):
+            self.active_block_queries = self.active_block_queries - 1
             if event == None:
-                #FIXME, scale down as in example code in jsonrpc main.
-                self._get_block(blockno)
+                if self.sync_block == None or blockno <= self.sync_block:
+                    self.sync_block = blockno
+                    self._get_block(blockno)
+                else:
+                    if self.active_block_queries == 0:
+                        self._get_block(blockno)
+                    else:
+                        self.rpc.logger.notice("Synced, reducing number of parallel get_block queries to " + str(self.active_block_queries))
             else:
+                if self.sync_block != None and blockno >= self.sync_block:
+                    self.sync_block = None
                 self._process_block(event)
                 self._get_block(self.last_block+1)
+                if self.active_block_queries < 8:
+                    treshold = self.active_block_queries * 20
+                    behind = (dt.utcnow() - dateutil.parser.parse(event["timestamp"])).seconds
+                    if behind >= treshold:
+                        self._get_block(self.last_block+1)
+                        self.rpc.logger.notice("Lost synchonysation, spinning up an extra parallel get_block query to ",str(self.active_block_queries))
+                    
         if self.last_block < blockno:
             self.last_block = blockno
         cmd = self.rpc.get_block(blockno)
         cmd.on_result(process_block_event)
+        self.active_block_queries = self.active_block_queries + 1
     def _bootstrap(self,block):
         self.rpc.logger.info("Starting at block ", str(block))
         #Start up eight paralel https queries so we can catch up with the blockchain.

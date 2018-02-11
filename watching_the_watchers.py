@@ -8,15 +8,51 @@ from asyncsteem import ActiveBlockChain
 
 class WatchingTheWatchers:
     def __init__(self):
-        pass
+        self.dvcount = 0
+        self.account_type = dict()
+        self.account_relations = dict()
+        self.by_voter = dict()
+        self.by_target = dict()
+        self.by_pair = dict()
     def update(self,downvoter, downvoted, dvpower, flagpower):
-        pass
-        #print "DOWNVOTE : ",downvoter,"=>",downvoted,"downvote =",dvpower,"flag",flagpower
-    def set_account_info(self,account,vp,racc,proxy):
-        pass
-        #print "ACCOUNT INFO:",account,"vote-power :",vp,"recovery :",racc,"proxy :",proxy
-    def report(self):
-        print "[REPORT]"
+        pair = downvoter + "/" + downvoted
+        if not downvoter in self.by_voter:
+            self.by_voter[downvoter] = [0.0,0.0]
+        if not downvoted in self.by_target:
+            self.by_target[downvoted] = [0.0,0.0]
+        if not pair in self.by_pair:
+            self.by_pair[pair] = [0.0,0.0]
+        self.by_voter[downvoter][0] = self.by_voter[downvoter][0] + dvpower
+        self.by_voter[downvoter][1] = self.by_voter[downvoter][1] + flagpower
+        self.by_target[downvoted][0] = self.by_target[downvoted][0] + dvpower
+        self.by_target[downvoted][1] = self.by_target[downvoted][1] + flagpower
+        self.by_pair[pair][0] = self.by_pair[pair][0] + dvpower
+        self.by_pair[pair][0] = self.by_pair[pair][0] + flagpower
+        self.dvcount = self.dvcount + 1
+        if self.dvcount % 100 == 0:
+            print self.dvcount,"downvotes so far."
+    def set_account_info(self,account,fish,related):
+        self.account_type[account] = fish
+        if len(related) > 0:
+            self.account_relations[account] = related
+    def report(self,tm):
+        print "[REPORT]",tm
+        print " * account_type :",self.account_type
+        print
+        print " * account_relations :",self.account_relations
+        print
+        print " * by voter :",self.by_voter
+        print
+        print " * by target :",self.by_target
+        print
+        print " * by pair :",self.by_pair
+        print
+        self.dvcount = 0
+        self.account_type = dict()
+        self.account_relations = dict()
+        self.by_voter = dict()
+        self.by_target = dict()
+        self.by_pair = dict()
 
 class WatchingTheWatchersBot:
     def __init__(self,wtw):
@@ -44,13 +80,23 @@ class WatchingTheWatchersBot:
                     vp = (float(a["vesting_shares"].split()[0]) + \
                           float(a["received_vesting_shares"].split()[0]) - \
                           float(a["delegated_vesting_shares"].split()[0]))/1000000.0
+                    fish = "redfish"
+                    if vp >= 1.0:
+                        fish = "minnow"
+                    if vp >= 10.0:
+                        fish = "dolphin"
+                    if vp >= 100:
+                        fish = "orca"
+                    if vp > 1000:
+                        fish = "whale"
                     racc = None
                     proxy = None
-                    if a["recovery_account"] != "steem":
-                        racc = a["recovery_account"]
+                    related = list()
+                    if a["recovery_account"] != "steem" and a["recovery_account"] != "":
+                        related.append(a["recovery_account"])
                     if a["proxy"] != "" :
-                        proxy = a["proxy"]
-                    self.wtw.set_account_info(account,vp,racc,proxy)
+                        related.append(a["proxy"])
+                    self.wtw.set_account_info(account,fish,related)
                     accl2 = list()
                     if racc!= None and not racc in self.looked_up:
                         accl2.append(racc)
@@ -60,21 +106,20 @@ class WatchingTheWatchersBot:
                         lookup_accounts(accl2)
             op = client.get_accounts(acclist)
             op.on_result(user_info)
-        if self.stopped == None or self.stopped > tm:
-            if vote_event["weight"] < 0:
-                opp = client.get_content(vote_event["author"],vote_event["permlink"])
-                opp.on_result(process_vote_content)
-                al = list()
-                if not vote_event["voter"] in self.looked_up:
-                    al.append(vote_event["voter"])
-                    self.looked_up.add(vote_event["voter"])
-                if not vote_event["author"] in self.looked_up:
-                    al.append(vote_event["author"])
-                    self.looked_up.add(vote_event["author"])
-                if len(al) > 0:
-                    lookup_accounts(al)
+        if vote_event["weight"] < 0:
+            opp = client.get_content(vote_event["author"],vote_event["permlink"])
+            opp.on_result(process_vote_content)
+            al = list()
+            if not vote_event["voter"] in self.looked_up:
+                al.append(vote_event["voter"])
+                self.looked_up.add(vote_event["voter"])
+            if not vote_event["author"] in self.looked_up:
+                al.append(vote_event["author"])
+                self.looked_up.add(vote_event["author"])
+            if len(al) > 0:
+                lookup_accounts(al)
     def day(self,tm,event,client):
-        self.stopped = tm
+        self.wtw.report(tm)
 
 print "Constructing ActiveBlockChain"
 bc = ActiveBlockChain(reactor,rewind_days=1)
@@ -86,4 +131,3 @@ bc.register_bot(tb,"watchingthewatchers")
 print "Starting main event loop"
 reactor.run()
 print "Done"
-wtw.report()
