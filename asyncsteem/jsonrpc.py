@@ -151,7 +151,7 @@ class RpcClient(object):
         ago = now - self.last_rotate
         self.errorcount = self.errorcount + 1
         if ago > self.rpc_timeout or self.errorcount >= self.parallel:
-            self.logger.notice("Swithing from " + self.nodes[self.node_index] + " to an other node due to error",reason)
+            self.logger.notice("Switshing from " + self.nodes[self.node_index] + " to an other node due to error",reason)
             self.last_rotate = now
             self.node_index = (self.node_index + 1) % len(self.nodes)
             self.errorcount = 0
