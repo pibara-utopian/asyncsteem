@@ -1,10 +1,17 @@
+Todo for release 0.5.1
+===
+* Fix 'Unhandled error in Deferred' errors in jsonrpc
+* Add a lot of comments to the code base
+* Add setup.py
+* Submit project to utopian
+
 Todo for release 0.6.1
 ===
 * Make an asyncsteem version of watching the watchers (without posting and scp)
 
 Todo for release 0.7.1
 ===
-* Add signed operations
+* Add signed operations (post, vote, etc)
 
 Todo for release 0.8.1
 ===
@@ -13,6 +20,7 @@ Todo for release 0.8.1
 
 Todo for release 0.9.1
 ===
+* Implement support for setting beneficeries.
 * Completely port watching the watchers to asyncsteem
 * Port @croupierbot to asyncsteem
 * Port all of the steempersist bots to asyncsteem
