@@ -7,7 +7,7 @@ from termcolor import colored
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.internet import defer
-from asyncsteem.logger import DefaultLogger
+
 
 class _StringProducer(object):
     """Helper class, implements IBodyProducer"""
@@ -28,14 +28,14 @@ class _StringProducer(object):
 
 class QueueEntry(object):
     """Helper class for managing in-queue JSON-RPC command invocations"""
-    def __init__(self, arpcclient, command, arguments, cmd_id, logger):
+    def __init__(self, arpcclient, command, arguments, cmd_id, log):
         self.rpcclient = arpcclient
         self.command = command
         self.arguments = arguments
         self.cmd_id = cmd_id
         self.result_callback = None
         self.error_callback = None
-        self.logger = logger
+        self.log = log
     def on_result(self, callback):
         """Set the on_result callback"""
         self.result_callback = callback
@@ -56,35 +56,25 @@ class QueueEntry(object):
             try:
                 self.result_callback(result, self.rpcclient)
             except Exception as ex:
-                self.logger.error("Error in result handler for '" +
-                              self.command +
-                              "' command result :",
-                              str(ex))
+                self.log.failure("Error in result handler for '{cmd!r}'.",cmd=self.command)
         else:
-            self.logger.error("Error: no on_result defined for '" +
-                          self.command +
-                          "' command result",str(result))
+            self.logg.error("Error: no on_result defined for '{cmd!r}' command result: {res!r}.",cmd=self.command,res=result)
     def _handle_error(self, errno, msg):
         """Call the supplied user error handler or act as default error handler."""
         if self.error_callback != None:
             try:
                 self.error_callback(errno, msg, rpcclient)
             except Exception as ex:
-                self.logger.error("Error in error handler for '" +
-                              self.command +
-                              "' command result :",
-                              str(ex))
+                self.log.failure("Error in error handler for '{cmd!r}'.",cmd=self.command)
         else:
-            self.logger.error("Notice: no on_error defined for '" +
-                          self.command +
-                          "' command result",str(msg))
-
+            self.log.err("Notice: no on_error defined for '{cmd!r}, command result: {msg!r}",cmd=self.command,msg=msg)
 
 
 class RpcClient(object):
     """Core JSON-RPC client class."""
     def __init__(self,
                  areactor,
+                 log,
                  nodes=["rpc.buildteam.io",
                         "steemd.minnowsupportproject.org",
                         "steemd.pevo.science",
@@ -95,10 +85,10 @@ class RpcClient(object):
                         "steemd.privex.io"],
                  parallel=16,
                  max_batch_size=1,
-                 rpc_timeout=15,
-                 logger = DefaultLogger()):
+                 rpc_timeout=15):
         """Constructor for asynchonour JSON-RPC client"""
         self.reactor = areactor
+        self.log = log
         self.nodes = nodes
         self.parallel = parallel
         self.max_batch_size = max_batch_size
@@ -111,18 +101,17 @@ class RpcClient(object):
         self.entries = dict()
         self.queue = list()
         self.active_call_count = 0
-        self.logger = logger
-        self.logger.info("Starting off with node "+nodes[self.node_index])
+        self.log.info("Starting off with node {node!r}.",node = nodes[self.node_index])
     def _next_node(self, reason):
         now = time.time()
         ago = now - self.last_rotate
         self.errorcount = self.errorcount + 1
         if ago > self.rpc_timeout or self.errorcount >= self.parallel:
-            self.logger.notice("Switshing from " + self.nodes[self.node_index] + " to an other node due to error",reason)
+            self.log("Switshing from {oldnode!r} to an other node due to error : {reason!r}",oldnode=self.nodes[self.node_index], reason=reason)
             self.last_rotate = now
             self.node_index = (self.node_index + 1) % len(self.nodes)
             self.errorcount = 0
-            self.logger.info("Switching to node " + self.nodes[self.node_index])
+            self.log.info("Switching to node {node!r}", node=self.nodes[self.node_index])
     def __call__(self):
         """Invoke the object to send out some of the queued commands to a server"""
         dv = None
@@ -150,7 +139,7 @@ class RpcClient(object):
         url = str.encode(url)
         deferred = self.agent.request('POST',
                                       url,
-                                      Headers({"User-Agent"  : ['Async Steem for Python v0.01'],
+                                      Headers({"User-Agent"  : ['Async Steem for Python v0.6.1'],
                                                "Content-Type": ["application/json"]}),
                                       _StringProducer(jo))
         def process_one_result(reply):
@@ -168,14 +157,15 @@ class RpcClient(object):
                                 msg = reply["error"]["message"]
                             match._handle_error(reply["error"]["code"], msg)
                         else:
-                            self.logger.error("Error: Invalid JSON-RPC response entry.")
+                            self.log.error("Error: Invalid JSON-RPC response entry.")
                     del self.entries[reply_id]
                 else:
-                    self.logger.error("Error: Invalid JSON-RPC id in entry:"+str(reply_id))
+                    self.log.err("Error: Invalid JSON-RPC id in entry {rid!r}",rid=reply_id)
             else:
-                self.logger.error("Error: Invalid JSON-RPC response without id in entry:"+str(reply_id))
+                self.log.err("Error: Invalid JSON-RPC response without id in entry: {ris!r}.",rid=reply_id)
         def handle_response(response):
             """Handle response for JSON-RPC batch query invocation."""
+
             if timeoutCall.active():
                 timeoutCall.cancel()
             def cbBody(bodystring):
@@ -196,11 +186,11 @@ class RpcClient(object):
                             for reply in results:
                                 process_one_result(reply)
                         else:
-                            self.logger.error("Error: Invalid JSON-RPC response, expecting list as response on batch.")
+                            self.log.error("Error: Invalid JSON-RPC response, expecting list as response on batch.")
                     for request_id in subqueue:
                         if request_id in self.entries:
                             del self.entries[request_id]
-                            self.logger.error("Error: No response entry for request entry in result:"+str(request_id))
+                            self.log.error("Error: No response entry for request entry in result: {rid!r}.",rid=request_id)
                     self.active_call_count = self.active_call_count - 1
                     self()
             deferred2 = readBody(response)
@@ -223,7 +213,7 @@ class RpcClient(object):
         def addQueueEntry(*args):
             """Return a new in-queue JSON-RPC command invocation object with auto generated command name from __getattr__."""
             self.cmd_seq = self.cmd_seq + 1
-            self.entries[self.cmd_seq] = QueueEntry(self, name, args, self.cmd_seq, self.logger)
+            self.entries[self.cmd_seq] = QueueEntry(self, name, args, self.cmd_seq, self.log)
             self.queue.append(self.cmd_seq)
             return self.entries[self.cmd_seq]
         return addQueueEntry
@@ -235,8 +225,10 @@ class RpcClient(object):
 
 if __name__ == "__main__":
     from twisted.internet import reactor
+    from twisted.logger import Logger, textFileLogObserver
     from datetime import datetime as dt
     import dateutil.parser
+    import sys
     #When processing a block we call this function for each downvote/flag
     def process_vote(vote_event,clnt):
         #Create a new JSON-RPC entry on the queue to fetch post info, including detailed vote info
@@ -268,8 +260,10 @@ if __name__ == "__main__":
         opp.on_result(process_content)
     #This is a bit fiddly at this low level,  start nextblock a bit higer than where we start out
     nextblock = 19656009
+    obs = textFileLogObserver(sys.stdout)
+    log = Logger(observer=obs,namespace="jsonrpc_test")
     #Create our JSON-RPC RpcClient
-    rpcclient = RpcClient(reactor)
+    rpcclient = RpcClient(reactor,log)
     #Count the number of active block queries
     active_block_queries = 0
     sync_block = None

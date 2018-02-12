@@ -1,9 +1,11 @@
 #!/usr/bin/python
 import sys
+import io
 from datetime import timedelta
 import time
 from termcolor import colored
 from twisted.internet import reactor
+from twisted.logger import Logger, textFileLogObserver
 from asyncsteem import ActiveBlockChain
 
 class WatchingTheWatchers:
@@ -121,13 +123,11 @@ class WatchingTheWatchersBot:
     def day(self,tm,event,client):
         self.wtw.report(tm)
 
-print "Constructing ActiveBlockChain"
-bc = ActiveBlockChain(reactor,rewind_days=1)
-print "Constructing bot"
+obs = textFileLogObserver(io.open("watchingthewatchers.log", "a"))
+print "NOTE: asyncsteem logging to watchingthewatchers.log"
+log = Logger(observer=obs,namespace="asyncsteem")
+bc = ActiveBlockChain(reactor,rewind_days=1,log=log)
 wtw = WatchingTheWatchers()
 tb = WatchingTheWatchersBot(wtw)
-print "Regestering bot"
 bc.register_bot(tb,"watchingthewatchers")
-print "Starting main event loop"
 reactor.run()
-print "Done"

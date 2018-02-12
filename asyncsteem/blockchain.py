@@ -11,14 +11,15 @@ from termcolor import colored
 
 
 class ActiveBlockChain:
-    def __init__(self,reactor,nodes=None,rewind_days=None):
+    def __init__(self,reactor,log,nodes=None,rewind_days=None):
+        self.log = log
         self.reactor = reactor #Twisted reactor to use
         self.last_block = 1    #Not the block we are looking for.
         if nodes == None:
-            self.rpc = RpcClient(reactor)
+            self.rpc = RpcClient(reactor,log)
         else:
-            self.rpc = RpcClient(reactor,nodes=nodes)
-        datefinder = DateFinder(self.rpc)
+            self.rpc = RpcClient(reactor,log,nodes=nodes)
+        datefinder = DateFinder(self.rpc,log)
         if rewind_days == None:
             datefinder(self._bootstrap,None)
         else:
@@ -53,7 +54,7 @@ class ActiveBlockChain:
                     if self.active_block_queries == 0:
                         self._get_block(blockno)
                     else:
-                        self.rpc.logger.notice("Synced, reducing number of parallel get_block queries to " + str(self.active_block_queries))
+                        self.log.info("Synced, reducing number of parallel get_block queries to {count!r}",count=self.active_block_queries)
             else:
                 if self.sync_block != None and blockno >= self.sync_block:
                     self.sync_block = None
@@ -64,15 +65,14 @@ class ActiveBlockChain:
                     behind = (dt.utcnow() - dateutil.parser.parse(event["timestamp"])).seconds
                     if behind >= treshold:
                         self._get_block(self.last_block+1)
-                        self.rpc.logger.notice("Lost synchonysation, spinning up an extra parallel get_block query to ",str(self.active_block_queries))
-                    
+                        self.log.info("Lost synchonysation, spinning up an extra parallel get_block query to {count!r}",count=self.active_block_queries)
         if self.last_block < blockno:
             self.last_block = blockno
         cmd = self.rpc.get_block(blockno)
         cmd.on_result(process_block_event)
         self.active_block_queries = self.active_block_queries + 1
     def _bootstrap(self,block):
-        self.rpc.logger.info("Starting at block ", str(block))
+        self.log.info("Starting at block {block!r}",block=block)
         #Start up eight paralel https queries so we can catch up with the blockchain.
         for index in range(0,8):
             self._get_block(block+index)
@@ -107,19 +107,19 @@ class ActiveBlockChain:
                                 try:
                                     self.active_events["hour"][bot](ts,obj,self.rpc)
                                 except Exception,e:
-                                    self.rpc.logger.error("Error in bot '"+bot+"' processing 'hour' event.",str(e))
+                                    self.log.failure("Error in bot '{bot!r}' processing 'hour' event.",bot=bot)
                         if ddt.hour == 0 and "day" in self.active_events:
                             for bot in self.active_events["day"].keys():
                                 try:
                                     self.active_events["day"][bot](ts,obj,self.rpc)
                                 except Exception,e:
-                                    self.rpc.logger.error("Error in bot '"+bot+"' processing 'day' event.",str(e))
+                                    self.log.failure("Error in bot '{bot!r}' processing 'day' event.",bot=bot)
                         if ddt.hour == 0 and ddt.weekday == 0 and "week" in self.active_events:
                             for bot in self.active_events["week"].keys():
                                 try:
                                     self.active_events["week"][bot](ts,obj,self.rpc)
                                 except Exception,e:
-                                    self.rpc.logger.error("Error in bot '"+bot+"' processing 'week' event:",str(e))
+                                    self.log.failure("Error in bot '{bot!r}' processing 'week' event.",bot=bot)
             blk_meta = dict()
             for k in ["witness_signature",
                       "block_id",
@@ -133,7 +133,7 @@ class ActiveBlockChain:
                     try:
                         self.active_events["block"][bot](ts,blk_meta,self.rpc)
                     except Exception,e:
-                        self.rpc.logger.error("Error in bot '"+bot+"' processing 'block' event.",str(e))
+                        self.log.failure("Error in bot '{bot!r}' processing 'block' event.",bot=bot)
             if "transactions" in blk and isinstance(blk["transactions"],list):
                 for index in range(0,len(blk["transactions"])):
                     transaction_meta = dict()
@@ -148,14 +148,14 @@ class ActiveBlockChain:
                             try:
                                 self.active_events["transaction"][bot](ts,transaction_meta,self.rpc)
                             except Exception,e:
-                                self.rpc.logger.error("Error in bot '"+bot+"' processing 'transaction' event:",str(e))
+                                self.log.failure("Error in bot '{bot!r}' processing 'transaction' event.",bot=bot)
                     if "operations" in blk["transactions"][index] and isinstance(blk["transactions"][index]["operations"],list):
                         for oindex in range(0,len(blk["transactions"][index]["operations"])):
                             operation = blk["transactions"][index]["operations"][oindex]
                             if not operation[0] in self.eventtypes:
                                 self.eventtypes.add(operation[0])
                                 if not operation[0] in self.active_events:
-                                    self.rpc.logger.notice("Received an operation not implemented by any bot.",operation[0])
+                                    self.log.info("Received an operation not implemented by any bot: {op!r}",op=operation[0])
                             if isinstance(operation,list) and \
                                len(operation) == 2 and \
                                (isinstance(operation[0],str) or isinstance(operation[0],unicode)) and \
@@ -168,10 +168,12 @@ class ActiveBlockChain:
                                     try:
                                         self.active_events[operation[0]][bot](ts,op,self.rpc)
                                     except Exception, e:
-                                        rpc.logger.error("Error in bot '"+bot+"' processing '" + operation[0] + "' event:",str(e))
+                                        self.log.failure("Error in bot '{bot!r}' processing '{op!r}' event.",bot=bot, op=operation[0])
 
 if __name__ == "__main__":
+    import sys
     from twisted.internet import reactor
+    from twisted.logger import Logger, textFileLogObserver
     class Bot:
         def vote(self,tm,vote_event,client):
             opp = client.get_content(vote_event["author"],vote_event["permlink"])
@@ -193,7 +195,9 @@ if __name__ == "__main__":
                                     start_rshares , "->" , start_rshares + float(vote["rshares"]) , ")"
                     start_rshares = start_rshares + float(vote["rshares"])
             opp.on_result(process_vote_content)
-    bc = ActiveBlockChain(reactor)
+    obs = textFileLogObserver(sys.stdout)
+    log = Logger(observer=obs,namespace="blockchain_test")
+    bc = ActiveBlockChain(reactor,log)
     bot=Bot()
     bc.register_bot(bot,"testbot")
     reactor.run()

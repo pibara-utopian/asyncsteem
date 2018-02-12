@@ -2,8 +2,9 @@
 import dateutil.parser
 
 class DateFinder(object):
-    def __init__(self,client):
+    def __init__(self,client,log):
         self.rpc = client
+        self.log = log
         self.active_queries = 0
     def __call__(self,on_found,trigger_time=None,best_guess=5000000):
         def process_global_config(config_event,cclient):
@@ -30,12 +31,10 @@ class DateFinder(object):
                                 else:
                                     self.lower_limit =blk
                                     if self.upper_limit == -1:
-                                        client.logger.info("Looking for block in range "+str(self.lower_limit)+"... ?")
+                                        self.log.info("Looking for block in range {rng!r}",rng=[self.lower_limit,"?"])
                                     else:
-                                        client.logger.info("Looking for block in range " + \
-                                                           str(self.lower_limit) + \
-                                                           "..." + \
-                                                           str(self.upper_limit) + " (" + str(self.upper_limit - self.lower_limit) + ") + " + str(ndx) + " " + str(blk))
+
+                                        self.log.info("Looking for block in range {rng!r}",rng=[self.lower_limit,self.upper_limit])
                         else:
                             #Our best guess was either to late or spot on.
                             if self.upper_limit == -1 or blk <= self.upper_limit: 
@@ -44,17 +43,11 @@ class DateFinder(object):
                                     on_found(blk)
                                 else:
                                     self.upper_limit = blk
-                                    client.logger.info("Looking for block in range " + \
-                                                       str(self.lower_limit) + \
-                                                       "..." + \
-                                                       str(self.upper_limit) + " (" + str(self.upper_limit - self.lower_limit) + ") - " + str(ndx) + " " + str(blk))
+                                    self.log.info("Looking for block in range {rng!r}",rng=[self.lower_limit,self.upper_limit])
                     else:
                         if self.upper_limit > blk or self.upper_limit == -1:
                             self.upper_limit = blk
-                            client.logger.info("Looking for block in range " + \
-                                               str(self.lower_limit) + \
-                                               "..." + \
-                                               str(self.upper_limit) + " (" + str(self.upper_limit - self.lower_limit) + ") None " + str(ndx)+ " " + str(blk))
+                            self.log.info("Looking for block in range {rng!r}",rng=[self.lower_limit,self.upper_limit])
                     if not self.found:
                         if self.upper_limit != -1:
                             nexttry = self.lower_limit + (self.upper_limit - self.lower_limit)*(ndx+1)/4
@@ -70,14 +63,18 @@ class DateFinder(object):
         get_block(15000000,2)
 
 if __name__ == "__main__":
+    import sys
     from twisted.internet import reactor
     from jsonrpc import RpcClient
     from datetime import date
     from dateutil import relativedelta
+    from twisted.logger import Logger, textFileLogObserver
     def process_blockno(bno):
         print "BLOCK: ",bno
-    rpcclient = RpcClient(reactor)
-    datefinder = DateFinder(rpcclient)
+    obs = textFileLogObserver(sys.stdout)
+    log = Logger(observer=obs,namespace="blockfinder_test")
+    rpcclient = RpcClient(reactor,log)
+    datefinder = DateFinder(rpcclient,log)
     ddt = date.today() - relativedelta.relativedelta(hour=0,days=1)
     datefinder(process_blockno,ddt)
     rpcclient()
