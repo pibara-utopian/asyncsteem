@@ -7,7 +7,7 @@ Eventually asyncsteem aims to become a complete asynchronous alternative to [ste
 The current beta however runs only on Python 2 and does not yet implement cryptographic signing operations that would be needed to, post, vote, etc.
 The asyncsteem library is a asynchonous library, designed to woth with the defacto Python asynchonous networking framework [twisted](https://twistedmatrix.com/trac/).
 
-If you wish to stay informed on my progress on this library, please follow [@mattockfs](https://steemit.com/@mattockfs) on steemit. I'll try to blog regularily on my progress. Donations for this project in the form of STEEM or in the form of steemit post upvotes are very much welcomed, as are pull requests with featyres or bug fixes.
+If you wish to stay informed on my progress on this library, please follow [@mattockfs](https://steemit.com/@mattockfs) on steemit or join [this](https://discord.gg/dUjUqmE) discord server. I'll try to blog regularily on my progress. Donations for this project in the form of STEEM or in the form of steemit post upvotes are very much welcomed, as are pull requests with featyres or bug fixes.
 
 Please note that there currently is no install script or pip install available yet, the code is currently in **early beta**, and ease of install is something I havent gotten to yet at the moment.
 
