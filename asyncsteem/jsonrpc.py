@@ -8,7 +8,7 @@ from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.internet import defer
 
-
+#Simple helper class for JSON-RPC response storage 
 class _StringProducer(object):
     """Helper class, implements IBodyProducer"""
     #implements(IBodyProducer)
@@ -26,16 +26,17 @@ class _StringProducer(object):
         """dummy stopProducing, does nothing"""
         pass
 
-class QueueEntry(object):
+#This class holds a queued JSON-RPC command and also holds references to it's callbacks
+class _QueueEntry(object):
     """Helper class for managing in-queue JSON-RPC command invocations"""
     def __init__(self, arpcclient, command, arguments, cmd_id, log):
-        self.rpcclient = arpcclient
-        self.command = command
-        self.arguments = arguments
-        self.cmd_id = cmd_id
-        self.result_callback = None
-        self.error_callback = None
-        self.log = log
+        self.rpcclient = arpcclient    #We keep a reference to the RpcClient that we pass to content and error handlers. 
+        self.command = command         #The name of the API call
+        self.arguments = arguments     #The API call arguments
+        self.cmd_id = cmd_id           #Sequence number for this command 
+        self.result_callback = None    #Callback for the result, defaults to None
+        self.error_callback = None     #Callback for error results, defaults to None
+        self.log = log                 #The asynchonous logger
     def on_result(self, callback):
         """Set the on_result callback"""
         self.result_callback = callback
@@ -53,57 +54,68 @@ class QueueEntry(object):
     def _handle_result(self, result):
         """Call the supplied user result handler or act as default result handler."""
         if self.result_callback != None:
+            #Call the result callback but expect failure.
             try:
                 self.result_callback(result, self.rpcclient)
             except Exception as ex:
                 self.log.failure("Error in result handler for '{cmd!r}'.",cmd=self.command)
         else:
+            #If no handler is set, all we do is log.
             self.logg.error("Error: no on_result defined for '{cmd!r}' command result: {res!r}.",cmd=self.command,res=result)
     def _handle_error(self, errno, msg):
         """Call the supplied user error handler or act as default error handler."""
         if self.error_callback != None:
+            #Call the error callback but expect failure.
             try:
                 self.error_callback(errno, msg, rpcclient)
             except Exception as ex:
                 self.log.failure("Error in error handler for '{cmd!r}'.",cmd=self.command)
         else:
+            #If no handler is set, all we do is log.
             self.log.err("Notice: no on_error defined for '{cmd!r}, command result: {msg!r}",cmd=self.command,msg=msg)
 
 
 class RpcClient(object):
     """Core JSON-RPC client class."""
     def __init__(self,
-                 areactor,
-                 log,
-                 nodes=None,
-                 nodelist = "default",
-                 parallel=16,
-                 rpc_timeout=15):
+                 areactor,                 #The Twisted reactor
+                 log,                      #The asynchonous logger
+                 nodes=None,               #If set, nodes overrules the nodelist list of nodes. NOTE, this will set max_batch_size to one!
+                 nodelist = "default",     #Other than "default", "stage" can be used and will use api.steemitstage.com 
+                                           # with a max_batch_size of 16
+                 parallel=16,              #Maximum number of paralel outstanding HTTPS JSON-RPC at any point in time. 
+                 rpc_timeout=15):          #Timeout for a single HTTPS JSON-RPC query.
         """Constructor for asynchonour JSON-RPC client"""
         self.reactor = areactor
         self.log = log
         if nodes:
+            #If nodes is defined, overrule nodelist with custom list of nodes.
             self.nodes = nodes
             self.max_batch_size = 1
         else:
+            #See nodesets.py for content. We use the nodes and max_batch_size as specified by the nodelist argument.
             self.nodes = nodesets.nodeset[nodelist]["nodes"]
             self.max_batch_size = nodesets.nodeset[nodelist]["max_batch_size"]
         self.parallel = parallel
         self.rpc_timeout = rpc_timeout
-        self.node_index = 0
-        self.agent = Agent(areactor)
-        self.cmd_seq = 0
-        self.last_rotate = 0
-        self.errorcount = 0
-        self.entries = dict()
-        self.queue = list()
-        self.active_call_count = 0
+        self.node_index = 0            #Start of with the first JSON-RPC node in the node list.
+        self.agent = Agent(areactor)   #HTTP(s) Agent
+        self.cmd_seq = 0               #Unique sequence number used for commands in the command queue.
+        self.last_rotate = 0           #Errors may come in batches, we keep track of the last rotate to an other node to avoid responding to
+                                       #errors from previois nodes.
+        self.errorcount = 0            #The number of errors seen since the previous node rotation.
+        self.entries = dict()          #Here the actual commands from the command queue are stored, keyed by sequence number.
+        self.queue = list()            #The actual command queue is just a list of sequence numbers.
+        self.active_call_count = 0     #The current number of active HTTPS POST calls. 
         self.log.info("Starting off with node {node!r}.",node = self.nodes[self.node_index])
     def _next_node(self, reason):
+        #We may have reason to move on to the next node, check how long ago we did so before and how many errors we have seen since.
         now = time.time()
         ago = now - self.last_rotate
         self.errorcount = self.errorcount + 1
-        if ago > self.rpc_timeout or self.errorcount >= self.parallel:
+        #Only if whe have been waiting a bit longer than the RPC timeout time, OR we have seen a bit more than the max amount of
+        # paralel HTTPS requests in errors, then it will be OK to rotate once more.
+        if ago > (self.rpc_timeout + 2) or self.errorcount > (self.parallel + 1) :
             self.log.error("Switshing from {oldnode!r} to an other node due to error : {reason!r}",oldnode=self.nodes[self.node_index], reason=reason)
             self.last_rotate = now
             self.node_index = (self.node_index + 1) % len(self.nodes)
@@ -112,14 +124,16 @@ class RpcClient(object):
     def __call__(self):
         """Invoke the object to send out some of the queued commands to a server"""
         dv = None
-        start_count = self.active_call_count
+        #Push as many queued calls as the self.max_batch_size and the max number of paralel HTTPS sessions allow for.
         while self.active_call_count < self.parallel and self.queue:
+            #Get a chunk of entries from the command queue so we can make a batch.
             subqueue = self.queue[:self.max_batch_size]
             self.queue = self.queue[self.max_batch_size:]
+            #Send a single batch to the currently selected RPC node.
             dv = self._process_batch(subqueue)
+        #If there is nothing left to do, there is nothing left to do
         if not self.queue and self.active_call_count == 0:
             self.reactor.stop()
-        end_count = self.active_call_count
         return dv
     def _process_batch(self, subqueue):
         """Send a single batch of JSON-RPC commands to the server and process the result."""
@@ -127,8 +141,11 @@ class RpcClient(object):
             timeoutCall = None
             jo = None
             if self.max_batch_size == 1:
+                #At time of writing, the regular nodes have broken JSON-RPC batch handling.
+                #So when max_batch_size is set to one, we assume we need to work around this fact.
                 jo = json.dumps(self.entries[subqueue[0]]._get_rpc_call_object())
             else:
+                #The api.steemitstage.com node properly supports JSON-RPC batches, and so, hopefully soon, will the other nodes.
                 qarr = list()
                 for num in subqueue:
                     qarr.append(self.entries[num]._get_rpc_call_object())
@@ -148,12 +165,14 @@ class RpcClient(object):
                         if reply_id in self.entries:
                             match = self.entries[reply_id]
                             if "result" in reply:
+                                #Call the proper result handler for the request that this response belongs to.
                                 match._handle_result(reply["result"])
                             else:
                                 if "error" in reply and "code" in reply["error"]:
                                     msg = "No message included with error"
                                     if "message" in reply["error"]:
                                         msg = reply["error"]["message"]
+                                    #Call the proper error handler for the request that this response belongs to.
                                     match._handle_error(reply["error"]["code"], msg)
                                 else:
                                     self.log.error("Error: Invalid JSON-RPC response entry.")
@@ -167,12 +186,14 @@ class RpcClient(object):
             def handle_response(response):
                 """Handle response for JSON-RPC batch query invocation."""
                 try:
+                    #Cancel any active timeout for this HTTPS call.
                     if timeoutCall.active():
                         timeoutCall.cancel()
                     def cbBody(bodystring):
                         """Process response body for JSON-RPC batch query invocation."""
                         try:
                             results = None
+                            #The bosy SHOULD be JSON, it not always is.
                             try:
                                 results = json.loads(bodystring)
                             except Exception as ex:
@@ -225,7 +246,7 @@ class RpcClient(object):
             """Return a new in-queue JSON-RPC command invocation object with auto generated command name from __getattr__."""
             try:
                 self.cmd_seq = self.cmd_seq + 1
-                self.entries[self.cmd_seq] = QueueEntry(self, name, args, self.cmd_seq, self.log)
+                self.entries[self.cmd_seq] = _QueueEntry(self, name, args, self.cmd_seq, self.log)
                 self.queue.append(self.cmd_seq)
                 return self.entries[self.cmd_seq]
             except Exception as ex:

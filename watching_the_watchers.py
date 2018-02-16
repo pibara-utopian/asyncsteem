@@ -126,7 +126,7 @@ class WatchingTheWatchersBot:
 obs = textFileLogObserver(io.open("watchingthewatchers.log", "a"))
 print "NOTE: asyncsteem logging to watchingthewatchers.log"
 log = Logger(observer=obs,namespace="asyncsteem")
-bc = ActiveBlockChain(reactor,rewind_days=1,log=log)
+bc = ActiveBlockChain(reactor,rewind_days=1,log=log,nodelist="stage")
 wtw = WatchingTheWatchers()
 tb = WatchingTheWatchersBot(wtw)
 bc.register_bot(tb,"watchingthewatchers")
