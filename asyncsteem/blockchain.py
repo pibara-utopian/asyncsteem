@@ -77,7 +77,7 @@ class ActiveBlockChain:
     def _bootstrap(self,block):
         self.log.info("Starting at block {block!r}",block=block)
         #Start up eight paralel https queries so we can catch up with the blockchain.
-        for index in range(0,64):
+        for index in range(0,96):
             self._get_block(block+index)
     #The __call__ method is to be called only by the jsonrpc client!
     def _process_block(self,blk):

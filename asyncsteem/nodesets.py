@@ -15,7 +15,7 @@ def _make_nodesets():
     sets["default"] = defaultset
     stageset = dict()
     stageset["nodes"]=["api.steemitstage.com"]
-    stageset["max_batch_size"] = 64
+    stageset["max_batch_size"] = 16
     sets["stage"] = stageset
     stagesetone = dict()
     stagesetone["nodes"]=["api.steemitstage.com"]
