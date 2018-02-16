@@ -3,7 +3,7 @@
 from __future__ import print_function
 import time
 import json
-from termcolor import colored
+import nodesets
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from twisted.internet import defer
@@ -75,23 +75,20 @@ class RpcClient(object):
     def __init__(self,
                  areactor,
                  log,
-                 nodes=["rpc.buildteam.io",
-                        "steemd.minnowsupportproject.org",
-                        "steemd.pevo.science",
-                        "rpc.steemviz.com",
-                        "seed.bitcoiner.me",
-                        "rpc.steemliberator.com",
-                        "api.steemit.com",
-                        "steemd.privex.io"],
+                 nodes=None,
+                 nodelist = "default",
                  parallel=16,
-                 max_batch_size=1,
                  rpc_timeout=15):
         """Constructor for asynchonour JSON-RPC client"""
         self.reactor = areactor
         self.log = log
-        self.nodes = nodes
+        if nodes:
+            self.nodes = nodes
+            self.max_batch_size = 1
+        else:
+            self.nodes = nodesets.nodeset[nodelist]["nodes"]
+            self.max_batch_size = nodesets.nodeset[nodelist]["max_batch_size"]
         self.parallel = parallel
-        self.max_batch_size = max_batch_size
         self.rpc_timeout = rpc_timeout
         self.node_index = 0
         self.agent = Agent(areactor)
@@ -101,7 +98,7 @@ class RpcClient(object):
         self.entries = dict()
         self.queue = list()
         self.active_call_count = 0
-        self.log.info("Starting off with node {node!r}.",node = nodes[self.node_index])
+        self.log.info("Starting off with node {node!r}.",node = self.nodes[self.node_index])
     def _next_node(self, reason):
         now = time.time()
         ago = now - self.last_rotate

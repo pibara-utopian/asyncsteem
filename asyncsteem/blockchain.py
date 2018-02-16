@@ -11,14 +11,17 @@ from termcolor import colored
 
 
 class ActiveBlockChain:
-    def __init__(self,reactor,log,nodes=None,rewind_days=None):
+    def __init__(self,reactor,log,nodelist=None,nodes=None,rewind_days=None):
         self.log = log
         self.reactor = reactor #Twisted reactor to use
         self.last_block = 1    #Not the block we are looking for.
-        if nodes == None:
-            self.rpc = RpcClient(reactor,log)
+        if nodelist==None:
+            if nodes == None:
+                self.rpc = RpcClient(reactor,log)
+            else:
+                self.rpc = RpcClient(reactor,log,nodes=nodes)
         else:
-            self.rpc = RpcClient(reactor,log,nodes=nodes)
+            self.rpc = RpcClient(reactor,log,nodelist=nodelist)
         datefinder = DateFinder(self.rpc,log)
         if rewind_days == None:
             datefinder(self._bootstrap,None)
@@ -74,7 +77,7 @@ class ActiveBlockChain:
     def _bootstrap(self,block):
         self.log.info("Starting at block {block!r}",block=block)
         #Start up eight paralel https queries so we can catch up with the blockchain.
-        for index in range(0,8):
+        for index in range(0,64):
             self._get_block(block+index)
     #The __call__ method is to be called only by the jsonrpc client!
     def _process_block(self,blk):

@@ -23,26 +23,23 @@ class TestBot:
             total_duration = now - self.start
             speed = int(chunk*1000.0/duration)*1.0/1000
             avspeed = int(self.blocks*1000/total_duration)*1.0/1000
-            print colored("* "+str(chunk)+" blocks processed in "+str(duration)+" seconds. Speed "+ str(speed) + " blocks per second. Avg:"+ str(avspeed),"green"),tm
             self.last = now
     def hour(self,tm,event,client):
         self.hourcount = self.hourcount + 1
         now = time.time()
         total_duration = str(timedelta(seconds=now-self.start))
         print colored("* HOUR mark: Processed "+str(self.hourcount)+ " blockchain hours in "+ total_duration,"green")
-        if self.hourcount == 7*24: 
+        if self.hourcount == 1*24: 
             print "Ending eventloop"
             reactor.stop()
 
 obs = textFileLogObserver(io.open("benchmark_asyncsteem.log", "a"))
 print "NOTE: asyncsteem logging to benchmark_asyncsteem.log"
 log = Logger(observer=obs,namespace="asyncsteem")
-print "Constructing ActiveBlockChain"
-bc = ActiveBlockChain(reactor,log=log,rewind_days=7)
-print "Constructing bot"
+nl = "stage" #"bench_stage","bench1","bench2","bench3","bench4","bench5","bench6","bench7","bench8"]:
+print "Benchmarking a full day of blocks for",nl
+bc = ActiveBlockChain(reactor,log=log,rewind_days=1,nodelist=nl)
 tb = TestBot()
-print "Regestering bot"
 bc.register_bot(tb,"benchmark")
-print "Starting main event loop"
 reactor.run()
-print "Done"
+print "Done."
