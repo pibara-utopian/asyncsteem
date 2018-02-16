@@ -2,8 +2,10 @@
 import sys
 from datetime import timedelta
 import time
+import io
 from termcolor import colored
 from twisted.internet import reactor
+from twisted.logger import Logger, textFileLogObserver
 from asyncsteem import ActiveBlockChain
 
 class TestBot:
@@ -32,8 +34,11 @@ class TestBot:
             print "Ending eventloop"
             reactor.stop()
 
+obs = textFileLogObserver(io.open("benchmark_asyncsteem.log", "a"))
+print "NOTE: asyncsteem logging to benchmark_asyncsteem.log"
+log = Logger(observer=obs,namespace="asyncsteem")
 print "Constructing ActiveBlockChain"
-bc = ActiveBlockChain(reactor,rewind_days=7)
+bc = ActiveBlockChain(reactor,log=log,rewind_days=7)
 print "Constructing bot"
 tb = TestBot()
 print "Regestering bot"

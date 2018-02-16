@@ -107,7 +107,7 @@ class RpcClient(object):
         ago = now - self.last_rotate
         self.errorcount = self.errorcount + 1
         if ago > self.rpc_timeout or self.errorcount >= self.parallel:
-            self.log("Switshing from {oldnode!r} to an other node due to error : {reason!r}",oldnode=self.nodes[self.node_index], reason=reason)
+            self.log.error("Switshing from {oldnode!r} to an other node due to error : {reason!r}",oldnode=self.nodes[self.node_index], reason=reason)
             self.last_rotate = now
             self.node_index = (self.node_index + 1) % len(self.nodes)
             self.errorcount = 0
@@ -126,96 +126,113 @@ class RpcClient(object):
         return dv
     def _process_batch(self, subqueue):
         """Send a single batch of JSON-RPC commands to the server and process the result."""
-        timeoutCall = None
-        jo = None
-        if self.max_batch_size == 1:
-            jo = json.dumps(self.entries[subqueue[0]]._get_rpc_call_object())
-        else:
-            qarr = list()
-            for num in subqueue:
-                qarr.append(self.entries[num]._get_rpc_call_object())
-            jo = json.dumps(qarr)
-        url = "https://" + self.nodes[self.node_index] + "/"
-        url = str.encode(url)
-        deferred = self.agent.request('POST',
-                                      url,
-                                      Headers({"User-Agent"  : ['Async Steem for Python v0.6.1'],
-                                               "Content-Type": ["application/json"]}),
-                                      _StringProducer(jo))
-        def process_one_result(reply):
-            """Process a single response from an JSON-RPC command."""
-            if "id" in reply:
-                reply_id = reply["id"]
-                if reply_id in self.entries:
-                    match = self.entries[reply_id]
-                    if "result" in reply:
-                        match._handle_result(reply["result"])
-                    else:
-                        if "error" in reply and "code" in reply["error"]:
-                            msg = "No message included with error"
-                            if "message" in reply["error"]:
-                                msg = reply["error"]["message"]
-                            match._handle_error(reply["error"]["code"], msg)
-                        else:
-                            self.log.error("Error: Invalid JSON-RPC response entry.")
-                    del self.entries[reply_id]
-                else:
-                    self.log.err("Error: Invalid JSON-RPC id in entry {rid!r}",rid=reply_id)
+        try:
+            timeoutCall = None
+            jo = None
+            if self.max_batch_size == 1:
+                jo = json.dumps(self.entries[subqueue[0]]._get_rpc_call_object())
             else:
-                self.log.err("Error: Invalid JSON-RPC response without id in entry: {ris!r}.",rid=reply_id)
-        def handle_response(response):
-            """Handle response for JSON-RPC batch query invocation."""
-
-            if timeoutCall.active():
-                timeoutCall.cancel()
-            def cbBody(bodystring):
-                """Process response body for JSON-RPC batch query invocation."""
-                results = None
+                qarr = list()
+                for num in subqueue:
+                    qarr.append(self.entries[num]._get_rpc_call_object())
+                jo = json.dumps(qarr)
+            url = "https://" + self.nodes[self.node_index] + "/"
+            url = str.encode(url)
+            deferred = self.agent.request('POST',
+                                          url,
+                                          Headers({"User-Agent"  : ['Async Steem for Python v0.6.1'],
+                                                   "Content-Type": ["application/json"]}),
+                                          _StringProducer(jo))
+            def process_one_result(reply):
+                """Process a single response from an JSON-RPC command."""
                 try:
-                    results = json.loads(bodystring)
+                    if "id" in reply:
+                        reply_id = reply["id"]
+                        if reply_id in self.entries:
+                            match = self.entries[reply_id]
+                            if "result" in reply:
+                                match._handle_result(reply["result"])
+                            else:
+                                if "error" in reply and "code" in reply["error"]:
+                                    msg = "No message included with error"
+                                    if "message" in reply["error"]:
+                                        msg = reply["error"]["message"]
+                                    match._handle_error(reply["error"]["code"], msg)
+                                else:
+                                    self.log.error("Error: Invalid JSON-RPC response entry.")
+                            del self.entries[reply_id]
+                        else:
+                            self.log.err("Error: Invalid JSON-RPC id in entry {rid!r}",rid=reply_id)
+                    else:
+                        self.log.err("Error: Invalid JSON-RPC response without id in entry: {ris!r}.",rid=reply_id)
                 except Exception as ex:
-                    self._next_node("Non-JSON response from server")
+                    self.log.failure("Error in _process_one_result {err!r}",err=str(ex))
+            def handle_response(response):
+                """Handle response for JSON-RPC batch query invocation."""
+                try:
+                    if timeoutCall.active():
+                        timeoutCall.cancel()
+                    def cbBody(bodystring):
+                        """Process response body for JSON-RPC batch query invocation."""
+                        try:
+                            results = None
+                            try:
+                                results = json.loads(bodystring)
+                            except Exception as ex:
+                                self._next_node("Non-JSON response from server")
+                                self.queue = subqueue + self.queue
+                                self.active_call_count = self.active_call_count - 1
+                                self()
+                            if results != None:
+                                if isinstance(results, dict):
+                                    process_one_result(results)
+                                else:
+                                    if isinstance(results, list):
+                                        for reply in results:
+                                            process_one_result(reply)
+                                    else:
+                                        self.log.error("Error: Invalid JSON-RPC response, expecting list as response on batch.")
+                                for request_id in subqueue:
+                                    if request_id in self.entries:
+                                        del self.entries[request_id]
+                                        self.log.error("Error: No response entry for request entry in result: {rid!r}.",rid=request_id)
+                                self.active_call_count = self.active_call_count - 1
+                                self()
+                        except Exception as ex:
+                            self.log.failure("Error in cbBody {err!r}",err=str(ex))
+                    deferred2 = readBody(response)
+                    deferred2.addCallback(cbBody)
+                    return deferred2
+                except Exception as ex:
+                    self.log.failure("Error in handle_response {err!r}",err=str(ex))
+            deferred.addCallback(handle_response)
+            def _handle_error(error):
+                """Handle network level error for JSON-RPC request."""
+                try:
+                    if timeoutCall.active():
+                        timeoutCall.cancel()
+                    self._next_node(error.getErrorMessage())
                     self.queue = subqueue + self.queue
                     self.active_call_count = self.active_call_count - 1
                     self()
-                if results != None:
-                    if isinstance(results, dict):
-                        process_one_result(results)
-                    else:
-                        if isinstance(results, list):
-                            for reply in results:
-                                process_one_result(reply)
-                        else:
-                            self.log.error("Error: Invalid JSON-RPC response, expecting list as response on batch.")
-                    for request_id in subqueue:
-                        if request_id in self.entries:
-                            del self.entries[request_id]
-                            self.log.error("Error: No response entry for request entry in result: {rid!r}.",rid=request_id)
-                    self.active_call_count = self.active_call_count - 1
-                    self()
-            deferred2 = readBody(response)
-            deferred2.addCallback(cbBody)
-            return deferred2
-        deferred.addCallback(handle_response)
-        def _handle_error(error):
-            """Handle network level error for JSON-RPC request."""
-            if timeoutCall.active():
-                timeoutCall.cancel()
-            self._next_node(error.getErrorMessage())
-            self.queue = subqueue + self.queue
-            self.active_call_count = self.active_call_count - 1
-            self()
-        deferred.addErrback(_handle_error)
-        timeoutCall = self.reactor.callLater(self.rpc_timeout, deferred.cancel)
-        self.active_call_count = self.active_call_count + 1
-        return deferred
+                except Exception as ex:
+                    self.log.failure("Error in _handle_error {err!r}",err=str(ex))
+            deferred.addErrback(_handle_error)
+            timeoutCall = self.reactor.callLater(self.rpc_timeout, deferred.cancel)
+            self.active_call_count = self.active_call_count + 1
+            return deferred
+        except Exception as ex:
+            self.log.failure("Error in _process_batch {err!r}",err=str(ex))
     def __getattr__(self, name):
         def addQueueEntry(*args):
             """Return a new in-queue JSON-RPC command invocation object with auto generated command name from __getattr__."""
-            self.cmd_seq = self.cmd_seq + 1
-            self.entries[self.cmd_seq] = QueueEntry(self, name, args, self.cmd_seq, self.log)
-            self.queue.append(self.cmd_seq)
-            return self.entries[self.cmd_seq]
+            try:
+                self.cmd_seq = self.cmd_seq + 1
+                self.entries[self.cmd_seq] = QueueEntry(self, name, args, self.cmd_seq, self.log)
+                self.queue.append(self.cmd_seq)
+                return self.entries[self.cmd_seq]
+            except Exception as ex:
+                self.log.failure("Error in addQueueEntry {err!r}",err=str(ex))
         return addQueueEntry
     #Need to be able to check if RpcClient equatesNone
     def __eq__(self, val):
