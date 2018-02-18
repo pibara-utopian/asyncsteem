@@ -80,12 +80,26 @@ class RpcClient(object):
     def __init__(self,
                  areactor,                 #The Twisted reactor
                  log,                      #The asynchonous logger
-                 nodes=None,               #If set, nodes overrules the nodelist list of nodes. NOTE, this will set max_batch_size to one!
+                 nodes=None,               #If set, nodes overrules the nodelist list of nodelist. NOTE, this will set max_batch_size to one!
+                 max_batch_size=None,      #If set, max_batch_size overrules the max_batchsize of nodelist.
                  nodelist = "default",     #Other than "default", "stage" can be used and will use api.steemitstage.com 
                                            # with a max_batch_size of 16
                  parallel=16,              #Maximum number of paralel outstanding HTTPS JSON-RPC at any point in time. 
-                 rpc_timeout=15):          #Timeout for a single HTTPS JSON-RPC query.
-        """Constructor for asynchonour JSON-RPC client"""
+                 rpc_timeout=15,           #Timeout for a single HTTPS JSON-RPC query.
+                 stop_when_empty= False):  #Stop the reactor then the command queue is empty.
+        """Constructor for asynchonour JSON-RPC client.
+        
+        Args:
+                areactor : The Twisted reactor
+                log      : The Twisted asynchonous logger
+                nodes    : List of API nodes, you normally should NOT use this, if you use this variable, also use max_batch_size!
+                max_batch_size : The max batch size to use for JSON-RPC batched calls. Only use with nodes that support batched RPC calls!
+                nodelist : Name of the nodelist to use. "default" and "stage" are currently valid values for this field.
+                parallel : Maximum number of paralel outstanding HTTPS JSON-RPC at any point in time.
+                rpc_timeout : Timeout (in seconds) for a single HTTPS JSON-RPC query.
+                stop_when_empty : Boolean indicating if reactor should be stopped when the command queue is empty and no active HTTPS 
+                                  sessions remain.
+        """
         self.reactor = areactor
         self.log = log
         if nodes:
@@ -96,6 +110,8 @@ class RpcClient(object):
             #See nodesets.py for content. We use the nodes and max_batch_size as specified by the nodelist argument.
             self.nodes = nodesets.nodeset[nodelist]["nodes"]
             self.max_batch_size = nodesets.nodeset[nodelist]["max_batch_size"]
+        if max_batch_size != None:
+            self.max_batch_size = max_batch_size
         self.parallel = parallel
         self.rpc_timeout = rpc_timeout
         self.node_index = 0            #Start of with the first JSON-RPC node in the node list.
@@ -107,6 +123,7 @@ class RpcClient(object):
         self.entries = dict()          #Here the actual commands from the command queue are stored, keyed by sequence number.
         self.queue = list()            #The actual command queue is just a list of sequence numbers.
         self.active_call_count = 0     #The current number of active HTTPS POST calls. 
+        self.stop_when_empty = stop_when_empty
         self.log.info("Starting off with node {node!r}.",node = self.nodes[self.node_index])
     def _next_node(self, reason):
         #We may have reason to move on to the next node, check how long ago we did so before and how many errors we have seen since.
@@ -133,7 +150,10 @@ class RpcClient(object):
             dv = self._process_batch(subqueue)
         #If there is nothing left to do, there is nothing left to do
         if not self.queue and self.active_call_count == 0:
-            self.reactor.stop()
+            self.log.error("Queue is empty and no active HTTPS-POSTs remaining.")
+            if self.stop_when_empty:
+                #On request, stop reactor when queue empty while no active queries remain.
+                self.reactor.stop() 
         return dv
     def _process_batch(self, subqueue):
         """Send a single batch of JSON-RPC commands to the server and process the result."""
@@ -176,11 +196,11 @@ class RpcClient(object):
                                     match._handle_error(reply["error"]["code"], msg)
                                 else:
                                     self.log.error("Error: Invalid JSON-RPC response entry.")
-                            del self.entries[reply_id]
+                            #del self.entries[reply_id]
                         else:
-                            self.log.err("Error: Invalid JSON-RPC id in entry {rid!r}",rid=reply_id)
+                            self.log.error("Error: Invalid JSON-RPC id in entry {rid!r}",rid=reply_id)
                     else:
-                        self.log.err("Error: Invalid JSON-RPC response without id in entry: {ris!r}.",rid=reply_id)
+                        self.log.error("Error: Invalid JSON-RPC response without id in entry: {ris!r}.",rid=reply_id)
                 except Exception as ex:
                     self.log.failure("Error in _process_one_result {err!r}",err=str(ex))
             def handle_response(response):
@@ -197,46 +217,71 @@ class RpcClient(object):
                             try:
                                 results = json.loads(bodystring)
                             except Exception as ex:
+                                #If the result is NON-JSON, may want to move to the next node in the node list
                                 self._next_node("Non-JSON response from server")
+                                #Add the failed sub-queue back to the command queue, we shall try again soon.
                                 self.queue = subqueue + self.queue
-                                self.active_call_count = self.active_call_count - 1
-                                self()
                             if results != None:
+                                ok = False
                                 if isinstance(results, dict):
+                                    #Running in legacy single JSON-RPC call mode (no batches), process the result of the single call.
                                     process_one_result(results)
+                                    ok = True
                                 else:
                                     if isinstance(results, list):
+                                        #Running in batch mode, process the batch result, one response at a time
                                         for reply in results:
                                             process_one_result(reply)
+                                        ok = True
                                     else:
+                                        #Completely unexpected result type, may want to move to the next node in the node list.
+                                        self._next_node("JSON response neither list nor object")
                                         self.log.error("Error: Invalid JSON-RPC response, expecting list as response on batch.")
-                                for request_id in subqueue:
-                                    if request_id in self.entries:
-                                        del self.entries[request_id]
-                                        self.log.error("Error: No response entry for request entry in result: {rid!r}.",rid=request_id)
-                                self.active_call_count = self.active_call_count - 1
-                                self()
+                                        #Add the failed sub-queue back to the command queue, we shall try again soon.
+                                        self.queue = subqueue + self.queue
+                                if ok == True:
+                                    #Clean up the entries dict by removing all fully processed commands that now are no longer in the queu.
+                                    for request_id in subqueue:
+                                        if request_id in self.entries:
+                                            del self.entries[request_id]
+                                        else:
+                                            self.log.error("Error: No response entry for request entry in result: {rid!r}.",rid=request_id)
                         except Exception as ex:
                             self.log.failure("Error in cbBody {err!r}",err=str(ex))
+                        #This HTTPS POST is now fully processed.
+                        self.active_call_count = self.active_call_count - 1
+                        #Invoke self, possibly sending new queues RPC calls to the current node
+                        self()
                     deferred2 = readBody(response)
                     deferred2.addCallback(cbBody)
                     return deferred2
                 except Exception as ex:
                     self.log.failure("Error in handle_response {err!r}",err=str(ex))
+                    #If something went wrong, the HTTPS POST isn't active anymore.
+                    self.active_call_count = self.active_call_count - 1
+                    #Invoke self, possibly sending new queues RPC calls to the current node
+                    self()
             deferred.addCallback(handle_response)
             def _handle_error(error):
                 """Handle network level error for JSON-RPC request."""
                 try:
+                    #Abandon any active timeout triggers
                     if timeoutCall.active():
                         timeoutCall.cancel()
+                    #Unexpected error on HTTPS POST, we may want to move to the next node.
                     self._next_node(error.getErrorMessage())
-                    self.queue = subqueue + self.queue
-                    self.active_call_count = self.active_call_count - 1
-                    self()
+                    self.log.error("Error on HTTPS POST : {err!r}",err=error.getErrorMessage())
                 except Exception as ex:
                     self.log.failure("Error in _handle_error {err!r}",err=str(ex))
+                #Add the failed sub-queue back to the command queue, we shall try again soon.
+                self.queue = subqueue + self.queue
+                ##If something went wrong, the HTTPS POST isn't active anymore.
+                self.active_call_count = self.active_call_count - 1
+                #Invoke self, possibly sending new queues RPC calls to the current node
+                self()
             deferred.addErrback(_handle_error)
             timeoutCall = self.reactor.callLater(self.rpc_timeout, deferred.cancel)
+            #Keep track of the number of active parallel HTTPS posts.
             self.active_call_count = self.active_call_count + 1
             return deferred
         except Exception as ex:
@@ -245,9 +290,13 @@ class RpcClient(object):
         def addQueueEntry(*args):
             """Return a new in-queue JSON-RPC command invocation object with auto generated command name from __getattr__."""
             try:
+                #A unique id for each command.
                 self.cmd_seq = self.cmd_seq + 1
+                #Create a new queu entry
                 self.entries[self.cmd_seq] = _QueueEntry(self, name, args, self.cmd_seq, self.log)
+                #append it to the command queue
                 self.queue.append(self.cmd_seq)
+                #Return handle to the new entry for setting callbacks on.
                 return self.entries[self.cmd_seq]
             except Exception as ex:
                 self.log.failure("Error in addQueueEntry {err!r}",err=str(ex))
@@ -273,9 +322,11 @@ if __name__ == "__main__":
             #We geep track of votes given and the total rshares this resulted in.
             start_rshares = 0.0
             #Itterate over all votes to count rshares and to find the downvote we are interested in.
+            found = False
             for vote in  event["active_votes"]:
                 #Look if it is our downvote.
                 if vote["voter"] == vote_event["voter"] and vote["rshares"] < 0:
+                    found = True
                     #Diferentiate between attenuating downvotes and reputation eating flags.
                     if start_rshares + float(vote["rshares"]) < 0:
                         print(vote["time"],\
@@ -291,10 +342,12 @@ if __name__ == "__main__":
                               start_rshares , "->" , start_rshares + float(vote["rshares"]) , ")")
                 #Update the total rshares recorded before our downvote
                 start_rshares = start_rshares + float(vote["rshares"])
+            if found == False:
+                print("vote not found, possibly to old.",vote_event["voter"],"=>",vote_event["author"],vote_event["permlink"])
         #Set the above closure as callback.
         opp.on_result(process_content)
     #This is a bit fiddly at this low level,  start nextblock a bit higer than where we start out
-    nextblock = 19656009
+    nextblock = 19933100
     obs = textFileLogObserver(sys.stdout)
     log = Logger(observer=obs,namespace="jsonrpc_test")
     #Create our JSON-RPC RpcClient
@@ -351,12 +404,8 @@ if __name__ == "__main__":
         #Bind the above closure to the result of get_block
         opp.on_result(process_block)
     #Kickstart the process by kicking off eigth block fetching operations.
-    for block in range(19656000, 19656008):
+    for block in range(19933000, 19933100):
         get_block(block)
-    test = rpcclient.get_dynamic_global_properties()
-    def process_result(msg, rpcclient):
-        print("      ",msg)
-    test.on_result(process_result)
     #By invoking the rpcclient, we will process queue entries upto the max number of paralel HTTPS requests.
     rpcclient()
     #Start the main twisted event loop.
