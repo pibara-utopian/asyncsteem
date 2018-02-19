@@ -7,7 +7,6 @@ import time
 from datetime import date
 from datetime import datetime as dt
 from dateutil import relativedelta
-from termcolor import colored
 
 
 class ActiveBlockChain:
