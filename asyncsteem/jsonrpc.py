@@ -72,7 +72,7 @@ class _QueueEntry(object):
                 self.log.failure("Error in error handler for '{cmd!r}'.",cmd=self.command)
         else:
             #If no handler is set, all we do is log.
-            self.log.err("Notice: no on_error defined for '{cmd!r}, command result: {msg!r}",cmd=self.command,msg=msg)
+            self.log.error("Notice: no on_error defined for '{cmd!r}, command result: {msg!r}",cmd=self.command,msg=msg)
 
 
 class RpcClient(object):
@@ -87,7 +87,7 @@ class RpcClient(object):
                  parallel=16,              #Maximum number of paralel outstanding HTTPS JSON-RPC at any point in time. 
                  rpc_timeout=15,           #Timeout for a single HTTPS JSON-RPC query.
                  stop_when_empty= False):  #Stop the reactor then the command queue is empty.
-        """Constructor for asynchonour JSON-RPC client.
+        """Constructor for asynchonous JSON-RPC client.
         
         Args:
                 areactor : The Twisted reactor
@@ -106,10 +106,12 @@ class RpcClient(object):
             #If nodes is defined, overrule nodelist with custom list of nodes.
             self.nodes = nodes
             self.max_batch_size = 1
+            self.prefix_method = False
         else:
             #See nodesets.py for content. We use the nodes and max_batch_size as specified by the nodelist argument.
             self.nodes = nodesets.nodeset[nodelist]["nodes"]
             self.max_batch_size = nodesets.nodeset[nodelist]["max_batch_size"]
+            self.prefix_method = nodesets.nodeset[nodelist]["prefix_method"]
         if max_batch_size != None:
             self.max_batch_size = max_batch_size
         self.parallel = parallel
@@ -200,7 +202,7 @@ class RpcClient(object):
                         else:
                             self.log.error("Error: Invalid JSON-RPC id in entry {rid!r}",rid=reply_id)
                     else:
-                        self.log.error("Error: Invalid JSON-RPC response without id in entry: {ris!r}.",rid=reply_id)
+                        self.log.error("Error: Invalid JSON-RPC response without id in entry: {reply!r}:",reply=reply)
                 except Exception as ex:
                     self.log.failure("Error in _process_one_result {err!r}",err=str(ex))
             def handle_response(response):
@@ -300,7 +302,23 @@ class RpcClient(object):
                 return self.entries[self.cmd_seq]
             except Exception as ex:
                 self.log.failure("Error in addQueueEntry {err!r}",err=str(ex))
-        return addQueueEntry
+        class api:
+            def __init__(self,name,client):
+                self.name = name
+                self.client = client
+            def __getattr__(self, name):
+                return self.client.__getattr__(self.name + "." + name)
+        if self.prefix_method == True:
+            if name[-4:] == "_api":
+                return api(name,self)
+            else:
+                if not "." in name:
+                    name = "condenser_api." + name
+                    return addQueueEntry
+                else:
+                    return addQueueEntry
+        else:
+            return addQueueEntry
     #Need to be able to check if RpcClient equatesNone
     def __eq__(self, val):
         if val is None:
@@ -351,7 +369,7 @@ if __name__ == "__main__":
     obs = textFileLogObserver(sys.stdout)
     log = Logger(observer=obs,namespace="jsonrpc_test")
     #Create our JSON-RPC RpcClient
-    rpcclient = RpcClient(reactor,log)
+    rpcclient = RpcClient(reactor,log,nodelist="stage")
     #Count the number of active block queries
     active_block_queries = 0
     sync_block = None
@@ -399,7 +417,7 @@ if __name__ == "__main__":
                     else:
                         print("Scaling down paralel HTTPS queries",active_block_queries)
         #Create a new JSON-RPC entry on the queue to fetch a block.
-        opp = rpcclient.get_block(blk)
+        opp = rpcclient.condenser_api.get_block(blk)
         active_block_queries = active_block_queries + 1
         #Bind the above closure to the result of get_block
         opp.on_result(process_block)
