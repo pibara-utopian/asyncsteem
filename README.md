@@ -4,7 +4,7 @@ Twisted based asynchonous python steem API.
 This project aims to implement an asynchronous python library for the STEEM JSON-RPC API.
 
 Eventually asyncsteem aims to become a complete asynchronous alternative to [steem-python](https://github.com/steemit/steem-python) that runs under both Python 2 and Python 3. 
-The current beta however runs only on Python 2 and does not yet implement cryptographic signing operations that would be needed to, post, vote, etc. There curently is a [Python 3](https://github.com/scottyeager/asyncsteem3) port of this Beta written by @scottyeager.  
+The current beta however runs only on Python 2 and does not yet implement cryptographic signing operations that would be needed to, post, vote, etc. There curently is a [Python 3 port](https://github.com/scottyeager/asyncsteem3)of this Beta written by @scottyeager.  
 The asyncsteem library is a asynchonous library, designed to woth with the defacto Python asynchonous networking framework [twisted](https://twistedmatrix.com/trac/).
 
 If you wish to stay informed on my progress on this library, please follow [@mattockfs](https://steemit.com/@mattockfs) on steemit or join [this](https://discord.gg/dUjUqmE) discord server. I'll try to blog regularily on my progress. Donations for this project in the form of STEEM or in the form of steemit post upvotes are very much welcomed, as are pull requests with featyres or bug fixes.
