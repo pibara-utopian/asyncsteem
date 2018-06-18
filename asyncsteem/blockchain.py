@@ -15,6 +15,7 @@ class ActiveBlockChain:
                  reactor,
                  log,
                  rewind_days=None,
+                 day_limit=None,
                  nodes=None,
                  max_batch_size=None,
                  nodelist="default",
@@ -28,6 +29,7 @@ class ActiveBlockChain:
             reactor : The Twisted reactor.
             log      : The Twisted asynchonous logger.
             rewind_days : Start n days in the past or None for now.
+            day_limit : Stop processing new blocks after n days. Meant to be used in conjunction with rewind_days.
             nodes    : List of API nodes, you normally should NOT use this, if you use this variable, also use max_batch_size!
             max_batch_size : The max batch size to use for JSON-RPC batched calls. Only use with nodes that support batched RPC calls!
             nodelist : Name of the nodelist to use. "default" and "stage" are currently valid values for this field.
@@ -38,6 +40,9 @@ class ActiveBlockChain:
         """
         try:
             self.log = log
+            self.daycount = 0
+            self.halt = False
+            self.day_limit = day_limit
             self.reactor = reactor #Twisted reactor to use
             self.last_block = 1    #Not the block we are looking for.
             self.rpc = RpcClient(reactor,log,
@@ -110,7 +115,8 @@ class ActiveBlockChain:
                         #Process this whole block
                         self._process_block(event)
                         #Add a new block getting command to the queue
-                        self._get_block(self.last_block+1)
+                        if self.halt == False:
+                            self._get_block(self.last_block+1)
                         if self.active_block_queries < self.initial_batch_size:
                             #We may want to scale up the number of get_block commands in the queue again.
                             if self.active_block_queries < 7:
@@ -122,15 +128,17 @@ class ActiveBlockChain:
                             behind = (dt.utcnow() - dateutil.parser.parse(event["timestamp"])).seconds
                             if behind >= treshold:
                                 #Do an extra get_block if we are behind to far.
-                                self._get_block(self.last_block+1)
-                                self.log.info("Lost synchonysation, spinning up an extra parallel get_block query to {count!r}",count=self.active_block_queries)
+                                if self.halt == False:
+                                    self._get_block(self.last_block+1)
+                                    self.log.info("Lost synchonysation, spinning up an extra parallel get_block query to {count!r}",count=self.active_block_queries)
                 except Exception,ex:
                     self.log.failure("Error in process_block_event : {err!r}",err=str(ex))
             if self.last_block < blockno:
                 self.last_block = blockno
-            cmd = self.rpc.get_block(blockno)
-            cmd.on_result(process_block_event)
-            self.active_block_queries = self.active_block_queries + 1
+            if self.halt == False:
+                cmd = self.rpc.get_block(blockno)
+                cmd.on_result(process_block_event)
+                self.active_block_queries = self.active_block_queries + 1
         except Exception,ex:
             self.log.failure("Error in ActiveBlockChain::_get_block : {err!r}",err=str(ex))
     def _bootstrap(self,block):
@@ -171,6 +179,7 @@ class ActiveBlockChain:
                             obj["day"] = ddt.day
                             obj["weekday"] = ddt.weekday()
                             obj["hour"] = ddt.hour
+                            self.log.info("Blockchain time mark: {ts!r}",ts=str(ts))
                             if "hour" in self.active_events:
                                 #Invoke hour event on all bots that implement the hour method
                                 for bot in self.active_events["hour"].keys():
@@ -178,6 +187,16 @@ class ActiveBlockChain:
                                         self.active_events["hour"][bot](ts,obj,self.rpc)
                                     except Exception,e:
                                         self.log.failure("Error in bot '{bot!r}' processing 'hour' event.",bot=bot)
+                            if ddt.hour == 0:
+                                self.daycount += 1
+                                if self.day_limit != None:
+                                    if self.daycount >= self.day_limit:
+                                        self.halt = True
+                                        self.log.info("Notice: day_limit reached, halting block fetching.")
+                                    else:
+                                        self.log.info("Info: day_limit not yet reached.")
+                                else:
+                                    self.log.info("A brand new day.")
                             if ddt.hour == 0 and "day" in self.active_events:
                                 #Invoke day event on all bots that implement the day method
                                 for bot in self.active_events["day"].keys():

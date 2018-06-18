@@ -67,7 +67,7 @@ class _QueueEntry(object):
         if self.error_callback != None:
             #Call the error callback but expect failure.
             try:
-                self.error_callback(errno, msg, rpcclient)
+                self.error_callback(errno, msg, self.rpcclient)
             except Exception as ex:
                 self.log.failure("Error in error handler for '{cmd!r}'.",cmd=self.command)
         else:
