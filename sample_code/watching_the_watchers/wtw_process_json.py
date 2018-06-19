@@ -180,10 +180,9 @@ with open("wtw-" + date + ".MD", "w") as mdfile:
     mdfile.write("voting has closed for that day. The below lists show the top accounts involved in high ")
     mdfile.write("powered down voted on both sides of the downvoting process.\n\n")
     mdfile.write("Votes are sorted by timestamp of casting as to distinguish between the **downvote** and ")
-    mdfile.write("the **flag** part of the negative vote. This is an important distinction as the downvote ")
-    mdfile.write("part will only cut into the payout of the post in question while any vote that would ")
-    mdfile.write("bring the payout below zero will end up cutting into the reputation of the author of the ")
-    mdfile.write("original blog post or comment.\n\n")
+    mdfile.write("the **flag**-only part of the negative vote.\n\n")
+    mdfile.write('<i>The <A HREF="https://github.com/pibara-utopian/asyncsteem">asyncsteem</A> script used ')
+    mdfile.write('to create this post is available as part of the *asyncsteem* sample_code.</i>.') 
     burl = "https://rmeijer.home.xs4all.nl/wtw/wtw-"
     for col in ["flag","downvote"]:
         mdfile.write("<H2>Top " + col + "s</H2>")
