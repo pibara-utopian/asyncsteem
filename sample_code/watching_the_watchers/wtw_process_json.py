@@ -94,7 +94,7 @@ class FlagJson:
                     rval["peer"] = m["proxy"]
                     rval["ptype"] = "proxy"
                     yield rval
-                if not m["recovery_account"] in ["steem","anonsteem"]:
+                if not m["recovery_account"] in self.recovery_whitelist:
                     rval = dict()
                     rval["account"] = account
                     rval["peer"] = m["recovery_account"]
