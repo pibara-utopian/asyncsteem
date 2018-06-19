@@ -1,0 +1,4 @@
+{
+  "recovery_account": ["steem", "anonsteem"],
+  "flag": ["spaminator", "steemcleaners", "mack-bot"]
+}

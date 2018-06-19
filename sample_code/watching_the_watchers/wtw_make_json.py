@@ -2,6 +2,7 @@
 import json
 import sys
 import io
+import time
 from twisted.internet import reactor
 from twisted.logger import Logger, textFileLogObserver
 from asyncsteem import ActiveBlockChain
@@ -18,6 +19,7 @@ class Count:
         self.count["downvote"]["by_flaggee"] = dict()
         self.count["downvote"]["by_pair"] = dict()
         self.count["meta"] = dict()
+        self.date = "undef"
     def flag(self,flagger,flaggee,rshares):
         if flagger in self.count["flag"]["by_flagger"]:
             self.count["flag"]["by_flagger"][flagger] += rshares
@@ -54,8 +56,11 @@ class Count:
         return list(rval)
     def setmeta(self,name,obj):
         self.count["meta"][name] = obj
+    def setdate(self,date):
+        self.date = date
+        print "Processing: ", date
     def dump(self):
-        with open("watching_the_watchers.json","w") as outfile:
+        with open("watching_the_watchers-" + self.date + ".json","w") as outfile:
             outfile.write(json.dumps(self.count))
 
 class TestBot:
@@ -63,6 +68,7 @@ class TestBot:
         self.count = count
         self.tm = None
         self.daycount = 0
+        self.date = None
     def comment(self,tm,comment_event,client):
         def process_votes_error(errno, msg, rpcclient):
             pass
@@ -82,12 +88,16 @@ class TestBot:
                         downvote(voter,rshares)
                         flag(voter, 0 - vote_rshares - vote_rshares)
             if (len(vote_events) > 0):
-                for vote in vote_events:
+                sortedvotes = sorted(vote_events, key=lambda kv: kv["time"])
+                for vote in sortedvotes:
                     if isinstance(vote["rshares"], basestring):
                         vote["rshares"] = float(vote["rshares"])
                     if vote["rshares"] < 0.0:
                         flag_or_downvote(vote["voter"],vote["rshares"])
                     rshares += vote["rshares"]
+        if self.date == None:
+            self.date = tm.split("T")[0]
+            count.setdate(self.date)
         opp = client.get_active_votes(comment_event["author"],comment_event["permlink"])
         opp.on_result(process_votes)
         opp.on_error(process_votes_error)
@@ -137,7 +147,10 @@ class TestBot:
 obs = textFileLogObserver(io.open("watching_the_watchers.log", "a"))
 print "NOTE: asyncsteem logging to watching_the_watchers.log"
 log = Logger(observer=obs,namespace="asyncsteem")
-bc = ActiveBlockChain(reactor,rewind_days=8,day_limit=1,log=log,nodelist="stage",stop_when_empty=True)
+days = 8
+if time.gmtime().tm_hour > 11:
+    days = 7
+bc = ActiveBlockChain(reactor,rewind_days=days,day_limit=1,log=log,nodelist="stage",stop_when_empty=True)
 count = Count()
 tb = TestBot(count)
 bc.register_bot(tb,"testbot")
