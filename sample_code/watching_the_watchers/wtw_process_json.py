@@ -38,7 +38,7 @@ class FlagJson:
         for subset in ["by_flagger","by_flaggee"]:
             top = sorted(self.data[col][subset].items(), key=lambda kv: kv[1])[-topn:]
             for pair in top:
-                if not pair[0] in self.flag_whitelist:
+                if not pair[0] in ["spaminator","steemcleaners"]:
                     rval.add(pair[0])
         #Then add proxy and creator accounts
         rval = rval.union(self.proxy_and_creator(rval))
@@ -52,37 +52,47 @@ class FlagJson:
                     return rval
                 rval = rval2
         return rval
+    def account_to_node(self,account):
+        meta = dict()
+        meta["name"] = account
+        meta["reputation"] = 25
+        meta["fish"] = "none"
+        if account in self.data["meta"].keys():
+            meta["fish"] = "redfish"
+            m = self.data["meta"][account]
+            meta["reputation"] = torep(m["reputation"])
+            vests = m["vesting_shares"] + m["received_vesting_shares"] - m["delegated_vesting_shares"]
+            mvests = vests * 1.0 / 1000000.0
+            if mvests > 1000:
+                meta["fish"] = "whale"
+            else:
+                if mvests > 100:
+                    meta["fish"] = "orca"
+                else:
+                    if mvests > 10:
+                        meta["fish"] = "dolphin"
+                    else:
+                        if mvests > 1:
+                            meta["fish"] = "minnow"
+        if account in self.data[col]["by_flagger"].keys():
+            meta["flagger"] = True
+        else:
+            meta["flagger"] = False
+        if account in self.data[col]["by_flaggee"].keys():
+            meta["flagged"] = True
+        else:
+            meta["flagged"] = False
+        associates = list(self.proxy_and_creator([account]))
+        meta["associates"] = ""
+        if len(associates) > 0:
+            for associate in associates:
+                if meta["associates"] != "":
+                    meta["associates"] += " "
+                meta["associates"] += "@" + associate
+        return meta
     def nodelist(self,col,accounts):
         for account in accounts:
-            meta = dict()
-            meta["name"] = account
-            meta["reputation"] = 25
-            meta["fish"] = "none"
-            if account in self.data["meta"].keys():
-                meta["fish"] = "redfish"
-                m = self.data["meta"][account]
-                meta["reputation"] = torep(m["reputation"])
-                vests = m["vesting_shares"] + m["received_vesting_shares"] - m["delegated_vesting_shares"]
-                mvests = vests * 1.0 / 1000000.0
-                if mvests > 1000:
-                    meta["fish"] = "whale"
-                else:
-                    if mvests > 100:
-                        meta["fish"] = "orca"
-                    else:
-                        if mvests > 10:
-                            meta["fish"] = "dolphin"
-                        else:
-                            if mvests > 1:
-                                meta["fish"] = "minnow"
-            if account in self.data[col]["by_flagger"].keys():
-                meta["flagger"] = True
-            else:
-                meta["flagger"] = False
-            if account in self.data[col]["by_flaggee"].keys():
-                meta["flagged"] = True
-            else:
-                meta["flagged"] = False
+            meta = self.account_to_node(account)
             yield meta
     def related_arclist(self,col,accounts):
         for account in accounts:
@@ -157,9 +167,9 @@ for col in ["flag","downvote"]:
                     clr = "hotpink3"
             key = node["name"]
             if fill:
-                G.add_node("@"+key,fillcolor=fc,shape=shape,style="filled")
+                G.add_node("@"+key,fillcolor=fc,shape=shape,style="filled",label="@"+key+"\l("+str(node["reputation"]) + ")")
             else:
-                G.add_node("@"+key,color=clr,fillcolor='white',shape=shape)
+                G.add_node("@"+key,color=clr,fillcolor='white',shape=shape,label="@"+key+"\l("+str(node["reputation"]) + ")")
         for arc in fjson.arclist(col,accounts):
             w = int((math.log10(arc["weight"] ) - 2) * 1.5)
             if w < 1:
@@ -194,18 +204,24 @@ with open("wtw-" + date + ".MD", "w") as mdfile:
         for by in ["flagger","flaggee"]:
             mdfile.write("<H3>By " + by + "</H3>")
             mdfile.write("<TABLE>")
-            mdfile.write("<TR><TH>Position</TH><TH>Account</TH><TH>Link</TH></TR>")
+            mdfile.write('<TR><TH>Position</TH><TH></TH><TH>Account</TH><TH>Link</TH><TH>Associates</TH></TR>')
             cnt = 0
             for cell in fjson.top(col,by,25):
+                node = fjson.account_to_node(cell["account"])
+                rep = node["reputation"]
+                fish = '<td><img src="https://rmeijer.home.xs4all.nl/wtw/'+ node["fish"] + '.png"></td>'
                 cnt = cnt + 1
                 mdfile.write("<TR><TD>"+str(cnt)+"</TD>")
-                mdfile.write("<TD>@" + cell["account"] + "</TD>")
-                mdfile.write('<TD><A HREF="https://steemd.com/@' + cell["account"] + '">steemd</A></TD></TR>\n')
+                mdfile.write(fish)
+                mdfile.write("<TD>@" + cell["account"] + " (" + str(node["reputation"])  + ")</TD>")
+                mdfile.write('<TD><A HREF="https://steemd.com/@' + cell["account"] + '">steemd</A></TD>')
+                mdfile.write('<TD>' + node["associates"] + "</TD></TR>\n\n")
             mdfile.write("</TABLE>\n")
     mdfile.write('<hr><div class="pull-left"><a href="https://discordapp.com/invite/fmE7Q9q">')
     mdfile.write('<img src="https://steemitimages.com/DQmNQmR2sgebuWg4pZgPyLEVD5DqtS5VjpZDhkxQya6wf4a/freezepeach-icon.png"></a></div>')
     mdfile.write("If you feel you've been wrongly flagged, check out @freezepeach, the flag abuse neutralizer.")
     mdfile.write('See the <a href="https://steemit.com/introduceyourself/@freezepeach/freezepeach-the-flag-abuse-neutralizer">intro post</a> for more details, or join the ')
     mdfile.write('<a href="https://discordapp.com/invite/fmE7Q9q">discord server.</a><hr>')
+
 
 
