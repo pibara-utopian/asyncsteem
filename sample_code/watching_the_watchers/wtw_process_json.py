@@ -38,7 +38,7 @@ class FlagJson:
         for subset in ["by_flagger","by_flaggee"]:
             top = sorted(self.data[col][subset].items(), key=lambda kv: kv[1])[-topn:]
             for pair in top:
-                if not pair[0] in ["spaminator","steemcleaners"]:
+                if not pair[0] in self.flag_whitelist:
                     rval.add(pair[0])
         #Then add proxy and creator accounts
         rval = rval.union(self.proxy_and_creator(rval))
@@ -181,7 +181,8 @@ for col in ["flag","downvote"]:
             else:
                 G.add_edge("@" + arc["account"],"@" + arc["peer"],penwidth = 2,color='red')
         G.layout(prog="fdp")
-        G.draw("wtw-" + date + "-" + col + "-" + scale + ".png")
+        for ofext in ["pdf","svg"]:
+            G.draw("wtw-" + date + "-" + col + "-" + scale + "." + ofext, format=ofext)
 with open("wtw-" + date + ".MD", "w") as mdfile:
     mdfile.write("# Flag-war stats for posts made on " + date + "\n\n")
     mdfile.write("This daily post lists stats on the top downvoters and top downvoted regarding to posts ")
@@ -196,11 +197,12 @@ with open("wtw-" + date + ".MD", "w") as mdfile:
     burl = "https://rmeijer.home.xs4all.nl/wtw/wtw-"
     for col in ["flag","downvote"]:
         mdfile.write("<H2>Top " + col + "s</H2>")
-        lurl = burl + date + "-" + col + "-large.png"
-        surl = burl + date + "-" + col + "-small.png"
+        lurl = burl + date + "-" + col + "-large.svg"
+        surl = burl + date + "-" + col + "-small.svg"
+        purl = burl + date + "-" + col + "-large.pdf"
         imglink = '<A HREF="' + lurl + '"><img src="' + surl + '"></A>' 
         mdfile.write(imglink + "<br>\n")
-        mdfile.write("<i>(Click image for more detailed image)</i><br>\n")
+        mdfile.write('<i>(Click image for more detailed image, or click <A HREF="' + purl + '">here</A> for a PDF version.)</i><br>\n')
         for by in ["flagger","flaggee"]:
             mdfile.write("<H3>By " + by + "</H3>")
             mdfile.write("<TABLE>")
