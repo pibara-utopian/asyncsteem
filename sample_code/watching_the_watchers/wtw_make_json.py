@@ -6,9 +6,13 @@ import time
 from twisted.internet import reactor
 from twisted.logger import Logger, textFileLogObserver
 from asyncsteem import ActiveBlockChain
+import os
+from os import listdir
+from os.path import isfile, join
+
 
 class Count:
-    def __init__(self):
+    def __init__(self,mypath):
         self.count = dict()
         self.count["flag"] = dict()
         self.count["downvote"] = dict()
@@ -20,6 +24,7 @@ class Count:
         self.count["downvote"]["by_pair"] = dict()
         self.count["meta"] = dict()
         self.date = "undef"
+        self.mypath = mypath
     def flag(self,flagger,flaggee,rshares):
         if flagger in self.count["flag"]["by_flagger"]:
             self.count["flag"]["by_flagger"][flagger] += rshares
@@ -60,7 +65,7 @@ class Count:
         self.date = date
         print "Processing: ", date
     def dump(self):
-        with open("watching_the_watchers-" + self.date + ".json","w") as outfile:
+        with open(join(self.mypath,"watching_the_watchers-" + self.date + ".json"),"w") as outfile:
             outfile.write(json.dumps(self.count))
 
 class TestBot:
@@ -144,14 +149,16 @@ class TestBot:
             opp = client.get_accounts([account])
             opp.on_result(process_accounts)
 
-obs = textFileLogObserver(io.open("watching_the_watchers.log", "a"))
+
+mypath = os.path.dirname(os.path.realpath(__file__))
+obs = textFileLogObserver(io.open(join(mypath,"watching_the_watchers.log"), "a"))
 print "NOTE: asyncsteem logging to watching_the_watchers.log"
 log = Logger(observer=obs,namespace="asyncsteem")
 days = 8
 if time.gmtime().tm_hour > 11:
     days = 7
 bc = ActiveBlockChain(reactor,rewind_days=days,day_limit=1,log=log,nodelist="stage",stop_when_empty=True)
-count = Count()
+count = Count(mypath)
 tb = TestBot(count)
 bc.register_bot(tb,"testbot")
 reactor.run()

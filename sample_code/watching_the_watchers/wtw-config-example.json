@@ -1,0 +1,8 @@
+{
+  "img-base-url": "https://sample.home.xs4all.nl/wtw/",
+  "ssh-server": "shell.xs4all.nl",
+  "ssh-account": "sample",
+  "ssh-password": "XxXxXxXx",
+  "steem-account": "samplebot",
+  "steem-posting-key": "FIXME"
+}

@@ -3,6 +3,10 @@ import json
 import math
 import pygraphviz as pgv
 import sys
+import os
+from os import listdir
+from os.path import isfile, join
+from sets import Set
 
 def torep(raw):
     if raw == 0:
@@ -16,13 +20,16 @@ def torep(raw):
         return int(25 - (math.log10(0 - raw) - 9)*9)
 
 class FlagJson:
-    def __init__(self,jsonfile):
+    def __init__(self,jsonfile,mypath):
         with open(jsonfile) as fil:
             self.data =json.loads(fil.read())
-        with open("whitelist.json") as fil2:
+        with open(join(mypath,"whitelist.json")) as fil2:
             dat = json.loads(fil2.read())
             self.recovery_whitelist = dat["recovery_account"]
             self.flag_whitelist = dat["flag"]
+        with open(join(mypath,"wtw-config.json")) as fil3:
+            dat = json.loads(fil3.read())
+            self.baseurl = dat["img-base-url"]
     def proxy_and_creator(self,accounts):
         rval = set()
         for account in accounts:
@@ -128,102 +135,134 @@ class FlagJson:
             rval["account"] = account
             yield rval
 
+mypath = os.path.dirname(os.path.realpath(__file__))
+sources = []
 
-if len(sys.argv) < 2:
-    print "Please supply json file"
-    sys.exit(1)
-jsonfile = sys.argv[1]
-date = jsonfile.split(".")[0].split("-",1)[1]
-print date
-fjson = FlagJson(jsonfile)
-for col in ["flag","downvote"]:
-    for scale in ["large","small"]:
-        nc = 128
-        top = 16
-        if scale == "small":
-            nc = 20
-            top = 4
-        accounts = fjson.account_subset(col,top,nc)
-        G=pgv.AGraph(strict=True,directed=True,bgcolor="antiquewhite1",splines="polyline")
-        for node in fjson.nodelist(col,accounts):
-            fill = False
-            if node["fish"] in ["whale","orca","dolphin"]:
-                fill = True
-            shape = "oval"
-            if node["fish"] in ["minnow","dolphin"]:
-                shape =  "octagon"
-            if node["fish"] =="orca":
-                shape = "doubleoctagon"
-            if node["fish"] == "whale":
-                shape = "tripleoctagon"
-            fc = "palegreen"
-            clr = "darkgreen"
-            if node["flagged"]:
-                if node["flagger"]:
-                    fc = "lightgoldenrod"
-                    clr = "gold3"
-                else:
-                    fc = "pink"
-                    clr = "hotpink3"
-            key = node["name"]
-            if fill:
-                G.add_node("@"+key,fillcolor=fc,shape=shape,style="filled",label="@"+key+"\l("+str(node["reputation"]) + ")")
-            else:
-                G.add_node("@"+key,color=clr,fillcolor='white',shape=shape,label="@"+key+"\l("+str(node["reputation"]) + ")")
-        for arc in fjson.arclist(col,accounts):
-            w = int((math.log10(arc["weight"] ) - 2) * 1.5)
-            if w < 1:
-                w = 1
-            G.add_edge("@" + arc["flagger"],"@" + arc["flagged"],penwidth = w)
-        for arc in fjson.related_arclist(col,accounts):
-            if arc["ptype"] == "proxy":
-                G.add_edge("@" + arc["account"],"@" + arc["peer"],penwidth = 2,color='blue')
-            else:
-                G.add_edge("@" + arc["account"],"@" + arc["peer"],penwidth = 2,color='red')
-        G.layout(prog="fdp")
-        for ofext in ["pdf","svg"]:
-            G.draw("wtw-" + date + "-" + col + "-" + scale + "." + ofext, format=ofext)
-with open("wtw-" + date + ".MD", "w") as mdfile:
-    mdfile.write("# Flag-war stats for posts made on " + date + "\n\n")
-    mdfile.write("This daily post lists stats on the top downvoters and top downvoted regarding to posts ")
-    mdfile.write("that just closed their six-and-a-half-day voting window.\n\nThe script that generated ")
-    mdfile.write("this post, batch-processes downvotes and upvotes on one day of posts at the moment that ")
-    mdfile.write("voting has closed for that day. The below lists show the top accounts involved in high ")
-    mdfile.write("powered down voted on both sides of the downvoting process.\n\n")
-    mdfile.write("Votes are sorted by timestamp of casting as to distinguish between the **downvote** and ")
-    mdfile.write("the **flag**-only part of the negative vote.\n\n")
-    mdfile.write('<i>The <A HREF="https://github.com/pibara-utopian/asyncsteem">asyncsteem</A> script used ')
-    mdfile.write('to create this post is available as part of the *asyncsteem* sample_code.</i>.') 
-    burl = "https://rmeijer.home.xs4all.nl/wtw/wtw-"
+for f in listdir(mypath):
+    filepath =join(mypath, f)
+    if isfile(filepath) and f[-5:] == ".json" and f[:22] == "watching_the_watchers-":
+        date = f[22:-5]
+        target = "wtw-" + date + ".MD"
+        targetpath = join(mypath, target)
+        if not isfile(targetpath):
+            sources.append(filepath)
+for jsonfile in sources:
+    pstruct = {}
+    pstruct["image"] = [];
+    pstruct["links"] = ["https://discordapp.com/invite/fmE7Q9q","https://steemit.com/introduceyourself/@freezepeach/freezepeach-the-flag-abuse-neutralizer"]
+    pstruct["app"] = "watching-the-watchers/0.02"
+    pstruct["format"] = "markdown"
+    pstruct["tags"] = ["stats","steem","steemit","flags","flagwars"]
+    pstruct["users"] = ["freezepeach"]
+    date = jsonfile.split(".")[0].split("-",1)[1]
+    print date,"(",jsonfile,")"
+    fjson = FlagJson(jsonfile,mypath)
+    baseurl = fjson.baseurl
     for col in ["flag","downvote"]:
-        mdfile.write("<H2>Top " + col + "s</H2>")
-        lurl = burl + date + "-" + col + "-large.svg"
-        surl = burl + date + "-" + col + "-small.svg"
-        purl = burl + date + "-" + col + "-large.pdf"
-        imglink = '<A HREF="' + lurl + '"><img src="' + surl + '"></A>' 
-        mdfile.write(imglink + "<br>\n")
-        mdfile.write('<i>(Click image for more detailed image, or click <A HREF="' + purl + '">here</A> for a PDF version.)</i><br>\n')
-        for by in ["flagger","flaggee"]:
-            mdfile.write("<H3>By " + by + "</H3>")
-            mdfile.write("<TABLE>")
-            mdfile.write('<TR><TH>Position</TH><TH></TH><TH>Account</TH><TH>Link</TH><TH>Associates</TH></TR>')
-            cnt = 0
-            for cell in fjson.top(col,by,25):
-                node = fjson.account_to_node(cell["account"])
-                rep = node["reputation"]
-                fish = '<td><img src="https://rmeijer.home.xs4all.nl/wtw/'+ node["fish"] + '.png"></td>'
-                cnt = cnt + 1
-                mdfile.write("<TR><TD>"+str(cnt)+"</TD>")
-                mdfile.write(fish)
-                mdfile.write("<TD>@" + cell["account"] + " (" + str(node["reputation"])  + ")</TD>")
-                mdfile.write('<TD><A HREF="https://steemd.com/@' + cell["account"] + '">steemd</A></TD>')
-                mdfile.write('<TD>' + node["associates"] + "</TD></TR>\n\n")
-            mdfile.write("</TABLE>\n")
-    mdfile.write('<hr><div class="pull-left"><a href="https://discordapp.com/invite/fmE7Q9q">')
-    mdfile.write('<img src="https://steemitimages.com/DQmNQmR2sgebuWg4pZgPyLEVD5DqtS5VjpZDhkxQya6wf4a/freezepeach-icon.png"></a></div>')
-    mdfile.write("If you feel you've been wrongly flagged, check out @freezepeach, the flag abuse neutralizer.")
-    mdfile.write('See the <a href="https://steemit.com/introduceyourself/@freezepeach/freezepeach-the-flag-abuse-neutralizer">intro post</a> for more details, or join the ')
-    mdfile.write('<a href="https://discordapp.com/invite/fmE7Q9q">discord server.</a><hr>')
-
+        for scale in ["large","small"]:
+            nc = 128
+            top = 16
+            if scale == "small":
+                nc = 20
+                top = 4
+            accounts = fjson.account_subset(col,top,nc)
+            G=pgv.AGraph(strict=True,directed=True,bgcolor="antiquewhite1",splines="polyline")
+            for node in fjson.nodelist(col,accounts):
+                fill = False
+                if node["fish"] in ["whale","orca","dolphin"]:
+                    fill = True
+                shape = "oval"
+                if node["fish"] in ["minnow","dolphin"]:
+                    shape =  "octagon"
+                if node["fish"] =="orca":
+                    shape = "doubleoctagon"
+                if node["fish"] == "whale":
+                    shape = "tripleoctagon"
+                fc = "palegreen"
+                clr = "darkgreen"
+                if node["flagged"]:
+                    if node["flagger"]:
+                        fc = "lightgoldenrod"
+                        clr = "gold3"
+                    else:
+                        fc = "pink"
+                        clr = "hotpink3"
+                key = node["name"]
+                if fill:
+                    G.add_node("@"+key,fillcolor=fc,shape=shape,style="filled",label="@"+key+"\l("+str(node["reputation"]) + ")")
+                else:
+                    G.add_node("@"+key,color=clr,fillcolor='white',shape=shape,label="@"+key+"\l("+str(node["reputation"]) + ")")
+            for arc in fjson.arclist(col,accounts):
+                w = int((math.log10(arc["weight"] ) - 2) * 1.5)
+                if w < 1:
+                    w = 1
+                G.add_edge("@" + arc["flagger"],"@" + arc["flagged"],penwidth = w)
+            for arc in fjson.related_arclist(col,accounts):
+                if arc["ptype"] == "proxy":
+                    G.add_edge("@" + arc["account"],"@" + arc["peer"],penwidth = 2,color='blue')
+                else:
+                    G.add_edge("@" + arc["account"],"@" + arc["peer"],penwidth = 2,color='red')
+            G.layout(prog="fdp")
+            if scale == "large": 
+                for ofext in ["pdf","svg"]:
+                    outfile = "wtw-" + date + "-" + col + "-" + scale + "." + ofext
+                    G.draw(join(mypath, outfile), format=ofext)
+            else:
+                for ofext in ["png"]:
+                    outfile = "wtw-" + date + "-" + col + "-" + scale + "." + ofext
+                    G.draw(join(mypath,outfile), format=ofext)
+                    if not baseurl + outfile in pstruct["image"]:
+                        pstruct["image"].append(baseurl + outfile)
+    for fish in ["redfish","minnow","dolphin","orca","whale"]:
+        fishfile = fish + ".png"
+        if not baseurl + fishfile in pstruct["image"]:
+            pstruct["image"].append(baseurl + fishfile)
+    allusers = Set() 
+    with open(join(mypath, "wtw-" + date + ".MD"), "w") as mdfile:
+        mdfile.write("# Flag-war stats for posts made on " + date + "\n\n")
+        mdfile.write("This daily post lists stats on the top downvoters and top downvoted regarding to posts ")
+        mdfile.write("that just closed their six-and-a-half-day voting window.\n\nThe script that generated ")
+        mdfile.write("this post, batch-processes downvotes and upvotes on one day of posts at the moment that ")
+        mdfile.write("voting has closed for that day. The below lists show the top accounts involved in high ")
+        mdfile.write("powered down voted on both sides of the downvoting process.\n\n")
+        mdfile.write("Votes are sorted by timestamp of casting as to distinguish between the **downvote** and ")
+        mdfile.write("the **flag**-only part of the negative vote.\n\n")
+        mdfile.write('<i>The <A HREF="https://github.com/pibara-utopian/asyncsteem">asyncsteem</A> script used ')
+        mdfile.write('to create this post is available as part of the *asyncsteem* sample_code.</i>.') 
+        burl = baseurl + "wtw-"
+        for col in ["flag","downvote"]:
+            mdfile.write("<H2>Top " + col + "s</H2>")
+            lurl = burl + date + "-" + col + "-large.svg"
+            surl = burl + date + "-" + col + "-small.png"
+            purl = burl + date + "-" + col + "-large.pdf"
+            imglink = '<A HREF="' + lurl + '"> <IMG src="' + surl + '"></A>' 
+            mdfile.write(imglink + "<br>\n")
+            mdfile.write('<i>(Click image for more detailed image, or click <A HREF="' + purl + '">here</A> for a PDF version.)</i><br>\n')
+            for by in ["flagger","flaggee"]:
+                mdfile.write("<H3>By " + by + "</H3>")
+                mdfile.write("<TABLE>")
+                mdfile.write('<TR><TH>Position</TH><TH></TH><TH>Account</TH><TH>Link</TH><TH>Associates</TH></TR>')
+                cnt = 0
+                for cell in fjson.top(col,by,25):
+                    node = fjson.account_to_node(cell["account"])
+                    rep = node["reputation"]
+                    fish = '<td><img src="' + baseurl+ node["fish"] + '.png"></td>'
+                    cnt = cnt + 1
+                    mdfile.write("<TR><TD>"+str(cnt)+"</TD>")
+                    mdfile.write(fish)
+                    allusers.add(cell["account"])
+                    mdfile.write("<TD>@" + cell["account"] + " (" + str(node["reputation"])  + ")</TD>")
+                    mdfile.write('<TD><A HREF="https://steemd.com/@' + cell["account"] + '">steemd</A></TD>')
+                    mdfile.write('<TD>' + node["associates"] + "</TD></TR>\n\n")
+                mdfile.write("</TABLE>\n")
+        mdfile.write('<hr><div class="pull-left"><a href="https://discordapp.com/invite/fmE7Q9q">')
+        mdfile.write('<img src="https://steemitimages.com/DQmNQmR2sgebuWg4pZgPyLEVD5DqtS5VjpZDhkxQya6wf4a/freezepeach-icon.png"></a></div>')
+        mdfile.write("If you feel you've been wrongly flagged, check out @freezepeach, the flag abuse neutralizer.")
+        mdfile.write('See the <a href="https://steemit.com/introduceyourself/@freezepeach/freezepeach-the-flag-abuse-neutralizer">intro post</a> for more details, or join the ')
+        mdfile.write('<a href="https://discordapp.com/invite/fmE7Q9q">discord server.</a><hr>')
+    for user in allusers:
+        pstruct["users"].append(user)
+    with open(join(mypath, "wtw-steem-meta-" + date + ".json"), "w") as jsonfile:
+        jsonfile.write(json.dumps(pstruct))
 
 

@@ -1,0 +1,7 @@
+*.pdf
+*.png
+*.svg
+*.MD
+watching_the_watchers-*.json
+wtw-steem-meta*.json
+wtw-config-pibarabot.json
