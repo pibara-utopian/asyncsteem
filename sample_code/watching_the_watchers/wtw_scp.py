@@ -4,7 +4,7 @@ import paramiko
 import os
 import json
 mypath = os.path.dirname(os.path.realpath(__file__))
-date = "2018-06-16" #FIXME, need to process the latest date from previous step only
+date = "2018-06-18" #FIXME, need to process the latest date from previous step only
 with open(join(mypath,"wtw-config.json")) as fil3:
     conf = json.loads(fil3.read())
 transport = paramiko.Transport((conf["ssh-server"], 22))

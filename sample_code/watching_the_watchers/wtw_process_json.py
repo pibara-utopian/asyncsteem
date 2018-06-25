@@ -213,7 +213,7 @@ for jsonfile in sources:
                     G.draw(join(mypath,outfile), format=ofext)
                     if not baseurl + outfile in pstruct["image"]:
                         pstruct["image"].append(baseurl + outfile)
-    for fish in ["redfish","minnow","dolphin","orca","whale"]:
+    for fish in ["redfish","minnow","dolphin","orca","whale","robocop"]:
         fishfile = fish + ".png"
         if not baseurl + fishfile in pstruct["image"]:
             pstruct["image"].append(baseurl + fishfile)
@@ -246,7 +246,10 @@ for jsonfile in sources:
                 for cell in fjson.top(col,by,25):
                     node = fjson.account_to_node(cell["account"])
                     rep = node["reputation"]
-                    fish = '<td><img src="' + baseurl+ node["fish"] + '.png"></td>'
+                    if cell["account"] in fjson.flag_whitelist:
+                        fish = '<td><img src="' + baseurl+ 'robocop.png"></td>'
+                    else:
+                        fish = '<td><img src="' + baseurl+ node["fish"] + '.png"></td>'
                     cnt = cnt + 1
                     mdfile.write("<TR><TD>"+str(cnt)+"</TD>")
                     mdfile.write(fish)
