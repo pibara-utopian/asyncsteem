@@ -1,0 +1,19 @@
+<html>
+	<head>
+		<title>Flag Stream Monitor</title>
+	        <script type="text/javascript" src="vis.js"></script>
+		<meta http-equiv="refresh" content="10" />
+	</head>
+	<body>
+        <H2>Flag Stream Monitor</H2>
+		<div id="mynetwork"></div>
+		<script type="text/javascript">
+			fetch("/snapshot").then(function(response){
+				response.json().then(function (data) {
+                                    var container = document.getElementById('mynetwork');
+                                    var network = new vis.Network(container, data, {});
+				});
+			});
+		</script>
+    </body>
+</html>
