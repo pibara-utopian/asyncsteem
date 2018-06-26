@@ -126,7 +126,7 @@ class ActiveBlockChain:
                                 #If we still end up running more than two minutes behind, keep scaling untill we don't
                                 treshold = 120
                             behind = (dt.utcnow() - dateutil.parser.parse(event["timestamp"])).seconds
-                            if behind >= treshold:
+                            if behind >= treshold and self.active_block_queries < 20:
                                 #Do an extra get_block if we are behind to far.
                                 if self.halt == False:
                                     self._get_block(self.last_block+1)
