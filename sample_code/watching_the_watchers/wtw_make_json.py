@@ -101,7 +101,7 @@ class TestBot:
                         flag_or_downvote(vote["voter"],vote["rshares"])
                     rshares += vote["rshares"]
         if self.date == None:
-            self.date = tm.split("T")[0]
+            self.date = str(tm.date())
             count.setdate(self.date)
         opp = client.get_active_votes(comment_event["author"],comment_event["permlink"])
         opp.on_result(process_votes)

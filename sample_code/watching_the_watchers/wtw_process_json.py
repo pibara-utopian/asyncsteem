@@ -4,9 +4,12 @@ import math
 import pygraphviz as pgv
 import sys
 import os
+import time
 from os import listdir
 from os.path import isfile, join
 from sets import Set
+from beem import Steem
+import paramiko
 
 def torep(raw):
     if raw == 0:
@@ -28,8 +31,8 @@ class FlagJson:
             self.recovery_whitelist = dat["recovery_account"]
             self.flag_whitelist = dat["flag"]
         with open(join(mypath,"wtw-config.json")) as fil3:
-            dat = json.loads(fil3.read())
-            self.baseurl = dat["img-base-url"]
+            self.conf = json.loads(fil3.read())
+            self.baseurl = self.conf["img-base-url"]
     def proxy_and_creator(self,accounts):
         rval = set()
         for account in accounts:
@@ -142,11 +145,23 @@ for f in listdir(mypath):
     filepath =join(mypath, f)
     if isfile(filepath) and f[-5:] == ".json" and f[:22] == "watching_the_watchers-":
         date = f[22:-5]
-        target = "wtw-" + date + ".MD"
-        targetpath = join(mypath, target)
-        if not isfile(targetpath):
-            sources.append(filepath)
+        dparts = date.split("-")
+        if len(dparts) == 3:
+            target = "wtw-" + date + ".MD"
+            targetpath = join(mypath, target)
+            if not isfile(targetpath):
+                sources.append(filepath)
+        else:
+            print "Invalid date:", date, "for file",f
+firstoutput = True
+if len(sources) == 0:
+    print "No unprocessed JSON files found."
 for jsonfile in sources:
+    if firstoutput == False:
+        print "Sleeping for five minutes before processing next unpublished post:", jsonfile
+        time.sleep(303)
+    firstoutput = False
+    print "Processing ", jsonfile
     pstruct = {}
     pstruct["image"] = [];
     pstruct["links"] = ["https://discordapp.com/invite/fmE7Q9q","https://steemit.com/introduceyourself/@freezepeach/freezepeach-the-flag-abuse-neutralizer"]
@@ -267,5 +282,28 @@ for jsonfile in sources:
         pstruct["users"].append(user)
     with open(join(mypath, "wtw-steem-meta-" + date + ".json"), "w") as jsonfile:
         jsonfile.write(json.dumps(pstruct))
-
+    transport = paramiko.Transport((fjson.conf["ssh-server"], 22))
+    transport.connect(username = fjson.conf["ssh-account"], password = fjson.conf["ssh-password"])
+    sftp = paramiko.SFTPClient.from_transport(transport)
+    for grp in ["downvote","flag"]:
+        for size in ["large", "small"]:
+            formats = ["png"]
+            if size == "large":
+                formats = ["svg","pdf"]
+            for fmt in formats:
+                filename = "wtw-" + date + "-" + grp + "-" + size + "." + fmt
+                sftp.put(join(mypath,filename),"WWW/wtw/" + filename)
+                print "Uploaded", filename, "to",fjson.conf["ssh-server"]
+    beneficiaries = [{'account':'freezepeach', 'weight':5000},{'account':'pibara', 'weight':5000}]
+    metafile = join(mypath,"wtw-steem-meta-" + date + ".json")
+    postfile = join(mypath,"wtw-" + date + ".MD")
+    with open(metafile) as m:
+        json_metadata = json.loads(m.read())
+    with open(postfile) as p:
+        body = p.read()
+    s = Steem(keys=fjson.conf["steem-posting-key"], nobroadcast=False)
+    subject = "Flag-war stats for posts made on " + date
+    tx = s.post(subject, body, author=fjson.conf["steem-account"], tags=["stats","steem","steemit","flags","flagwars"],
+                        json_metadata=json_metadata, beneficiaries=beneficiaries)
+print "DONE"
 

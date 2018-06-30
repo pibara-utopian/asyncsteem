@@ -21,7 +21,7 @@ class ActiveBlockChain:
                  nodelist="default",
                  parallel=16,
                  rpc_timeout=15,
-                 initial_batch_size = 128,
+                 initial_batch_size = None,
                  stop_when_empty= False):
         """Constructor
 
@@ -67,7 +67,13 @@ class ActiveBlockChain:
             self.eventtypes = set()
             self.sync_block = None
             self.active_block_queries = 0
-            self.initial_batch_size = initial_batch_size
+            if initial_batch_size != None:
+                self.initial_batch_size = initial_batch_size
+            else:
+                if rewind_days != None and rewind_days > 0:
+                    self.initial_batch_size = 32
+                else:
+                    self.initial_batch_size = 2
             #Wake up the RpcClient
             self.rpc()
         except Exception,ex:
@@ -103,6 +109,7 @@ class ActiveBlockChain:
                             self._get_block(blockno)
                         else:
                             if self.active_block_queries == 0:
+                                self._process_behind(0,dt.utcnow())
                                 #If it isn't, but this is the last query remaining, try the sync_block once more.
                                 self._get_block(self.sync_block)
                             else:
@@ -131,6 +138,7 @@ class ActiveBlockChain:
                                 if self.halt == False:
                                     self._get_block(self.last_block+1)
                                     self.log.info("Lost synchonysation, spinning up an extra parallel get_block query to {count!r}",count=self.active_block_queries)
+                            self._process_behind(behind,dateutil.parser.parse(event["timestamp"]))
                 except Exception,ex:
                     self.log.failure("Error in process_block_event : {err!r}",err=str(ex))
             if self.last_block < blockno:
@@ -149,7 +157,16 @@ class ActiveBlockChain:
                 self._get_block(block+index)
         except Exception,ex:
             self.log.failure("Error in ActiveBlockChain::_bootstrap : {err!r}",err=str(ex))
-    #The __call__ method is to be called only by the jsonrpc client!
+    def _process_behind(self,seconds,ts):
+        if "behind" in self.active_events:
+            #Invoke behind eventon all bots that implement the behind method
+            for bot in self.active_events["behind"].keys():
+                try:
+                    behind_obj = dict()
+                    behind_obj["seconds"] = seconds
+                    self.active_events["behind"][bot](ts,behind_obj,self.rpc)
+                except Exception,e:
+                    self.log.failure("Error in bot '{bot!r}' processing 'behind' event: {err!r}",bot=bot,err=str(e))
     def _process_block(self,blk):
         try:
             if blk != None and "timestamp" in blk:
@@ -184,7 +201,7 @@ class ActiveBlockChain:
                                 #Invoke hour event on all bots that implement the hour method
                                 for bot in self.active_events["hour"].keys():
                                     try:
-                                        self.active_events["hour"][bot](ts,obj,self.rpc)
+                                        self.active_events["hour"][bot](ddt,obj,self.rpc)
                                     except Exception,e:
                                         self.log.failure("Error in bot '{bot!r}' processing 'hour' event.",bot=bot)
                             if ddt.hour == 0:
@@ -201,14 +218,14 @@ class ActiveBlockChain:
                                 #Invoke day event on all bots that implement the day method
                                 for bot in self.active_events["day"].keys():
                                     try:
-                                        self.active_events["day"][bot](ts,obj,self.rpc)
+                                        self.active_events["day"][bot](ddt,obj,self.rpc)
                                     except Exception,e:
                                         self.log.failure("Error in bot '{bot!r}' processing 'day' event.",bot=bot)
                             if ddt.hour == 0 and ddt.weekday == 0 and "week" in self.active_events:
                                 #Invoke week event on all bots that implement the week method
                                 for bot in self.active_events["week"].keys():
                                     try:
-                                        self.active_events["week"][bot](ts,obj,self.rpc)
+                                        self.active_events["week"][bot](ddt,obj,self.rpc)
                                     except Exception,e:
                                         self.log.failure("Error in bot '{bot!r}' processing 'week' event.",bot=bot)
                 blk_meta = dict()
@@ -224,7 +241,7 @@ class ActiveBlockChain:
                     #Invoke block event  on all bots that implement the block method
                     for bot in self.active_events["block"].keys():
                         try:
-                            self.active_events["block"][bot](ts,blk_meta,self.rpc)
+                            self.active_events["block"][bot](ddt,blk_meta,self.rpc)
                         except Exception,e:
                             self.log.failure("Error in bot '{bot!r}' processing 'block' event.",bot=bot)
                 if "transactions" in blk and isinstance(blk["transactions"],list):
@@ -243,7 +260,7 @@ class ActiveBlockChain:
                             #Invoke transaction event  on all bots that implement the transaction method
                             for bot in self.active_events["transaction"].keys():
                                 try:
-                                    self.active_events["transaction"][bot](ts,transaction_meta,self.rpc)
+                                    self.active_events["transaction"][bot](ddt,transaction_meta,self.rpc)
                                 except Exception,e:
                                     self.log.failure("Error in bot '{bot!r}' processing 'transaction' event.",bot=bot)
                         if "operations" in blk["transactions"][index] and isinstance(blk["transactions"][index]["operations"],list):
@@ -268,7 +285,7 @@ class ActiveBlockChain:
                                     #Invoke specific operation event  on all bots that implement the specific operation method
                                     for bot in self.active_events[operation[0]].keys():
                                         try:
-                                            self.active_events[operation[0]][bot](ts,op,self.rpc)
+                                            self.active_events[operation[0]][bot](ddt,op,self.rpc)
                                         except Exception, e:
                                             self.log.failure("Error in bot '{bot!r}' processing '{op!r}' event.",bot=bot, op=operation[0])
         except Exception,ex:

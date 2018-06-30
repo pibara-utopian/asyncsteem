@@ -127,7 +127,7 @@ class RpcClient(object):
         self.active_call_count = 0     #The current number of active HTTPS POST calls. 
         self.stop_when_empty = stop_when_empty
         self.log.info("Starting off with node {node!r}.",node = self.nodes[self.node_index])
-    def _next_node(self, reason):
+    def _next_node(self):
         #We may have reason to move on to the next node, check how long ago we did so before and how many errors we have seen since.
         now = time.time()
         ago = now - self.last_rotate
@@ -135,11 +135,16 @@ class RpcClient(object):
         #Only if whe have been waiting a bit longer than the RPC timeout time, OR we have seen a bit more than the max amount of
         # paralel HTTPS requests in errors, then it will be OK to rotate once more.
         if ago > (self.rpc_timeout + 2) or self.errorcount > (self.parallel + 1) :
-            self.log.error("Switshing from {oldnode!r} to an other node due to error : {reason!r}",oldnode=self.nodes[self.node_index], reason=reason)
-            self.last_rotate = now
-            self.node_index = (self.node_index + 1) % len(self.nodes)
-            self.errorcount = 0
-            self.log.info("Switching to node {node!r}", node=self.nodes[self.node_index])
+            if len(self.nodes) > 1:
+                self.log.error("Switching from {oldnode!r} to an other node due to error.",oldnode=self.nodes[self.node_index])
+                self.last_rotate = now
+                self.node_index = (self.node_index + 1) % len(self.nodes)
+                self.errorcount = 0
+                self.log.info("New node is: {node!r}", node=self.nodes[self.node_index])
+            else:
+                self.log.error("Can't rotate to different node despite of errors. Node set contains just one node.")
+                self.last_rotate = now
+                self.errorcount = 0
     def __call__(self):
         """Invoke the object to send out some of the queued commands to a server"""
         dv = None
@@ -220,7 +225,8 @@ class RpcClient(object):
                                 results = json.loads(bodystring)
                             except Exception as ex:
                                 #If the result is NON-JSON, may want to move to the next node in the node list
-                                self._next_node("Non-JSON response from server")
+                                self.log.error("Non-JSON response from server")
+                                self._next_node()
                                 #Add the failed sub-queue back to the command queue, we shall try again soon.
                                 self.queue = subqueue + self.queue
                             if results != None:
@@ -237,8 +243,8 @@ class RpcClient(object):
                                         ok = True
                                     else:
                                         #Completely unexpected result type, may want to move to the next node in the node list.
-                                        self._next_node("JSON response neither list nor object")
                                         self.log.error("Error: Invalid JSON-RPC response, expecting list as response on batch.")
+                                        self._next_node()
                                         #Add the failed sub-queue back to the command queue, we shall try again soon.
                                         self.queue = subqueue + self.queue
                                 if ok == True:
@@ -271,8 +277,8 @@ class RpcClient(object):
                     if timeoutCall.active():
                         timeoutCall.cancel()
                     #Unexpected error on HTTPS POST, we may want to move to the next node.
-                    self._next_node(error.getErrorMessage())
-                    self.log.error("Error on HTTPS POST : {err!r}",err=error.getErrorMessage())
+                    self.log.error("Error on HTTPS POST : {cls!r} : {err!r}",cls=error.type.__name__,err=error.getErrorMessage())
+                    self._next_node()
                 except Exception as ex:
                     self.log.failure("Error in _handle_error {err!r}",err=str(ex))
                 #Add the failed sub-queue back to the command queue, we shall try again soon.

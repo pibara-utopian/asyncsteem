@@ -6,7 +6,7 @@ here = path.abspath(path.dirname(__file__))
 
 setup(
     name='asyncsteem',
-    version='0.5.2',
+    version='0.6.1',
     description='Asynchonous library for usage of the STEEM JSON-RPC API',
     long_description="""A Twisted based asynchonous library for creating simple STEEM based bots
     that use the STEEM JSON-RPC API.
