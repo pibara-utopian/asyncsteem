@@ -91,7 +91,7 @@ class DateFinder(object):
             self.active_queries = self.active_queries + 1
             #Set callback closure for results.
             opp.on_result(process_block)
-            op.on_error(process_block_error)
+            opp.on_error(process_block_error)
         #Assume our initial search area ranges from zero to 40000000 and chop up that search area into four equaly sized chunks.
         get_block(10000000,0)
         get_block(20000000,1)
