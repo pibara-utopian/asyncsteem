@@ -24,14 +24,21 @@ class DateFinder(object):
         #If no trigger time is set, we fetch the "last_irreversible_block_num" value with the get_dynamic_global_properties call.
         def process_global_config(config_event,cclient):
             on_found(config_event["last_irreversible_block_num"])
+        def global_config_error(errno, msg, cclient):
+            self.log.error(msg + "while trying to fetch the global config")
+            self(on_found, None)
         if trigger_time == None:
             cmd = self.rpc.get_dynamic_global_properties()
             cmd.on_result(process_global_config)
+            cmd.on_error(global_config_error)
             return
         self.lower_limit = 0   #Initial window starts at zero
         self.upper_limit = -1  # and ends at infinity.
         self.found = False
         def get_block(blk,ndx):
+            def process_block_error(errno, msg, client):
+               self.log.error(msg + " while fetching block " + str(blk) + " (ndx=" + str(ndx) + ")")
+               self.get_block(blk,ndx)
             def process_block(event, client):
                 if not self.found: #Don't continue if already found
                     self.active_queries = self.active_queries - 1
@@ -84,6 +91,7 @@ class DateFinder(object):
             self.active_queries = self.active_queries + 1
             #Set callback closure for results.
             opp.on_result(process_block)
+            op.on_error(process_block_error)
         #Assume our initial search area ranges from zero to 40000000 and chop up that search area into four equaly sized chunks.
         get_block(10000000,0)
         get_block(20000000,1)

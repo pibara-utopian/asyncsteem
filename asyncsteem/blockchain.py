@@ -98,6 +98,9 @@ class ActiveBlockChain:
             self.log.failure("Error in ActiveBlockChain::register_bot : {err!r}",err=str(ex))
     def _get_block(self,blockno):
         try:
+            def process_block_error(errno, msg, rpcclient):
+                self.log.error(msg + " while trying to fetch block " + str(blockno))
+                self._get_block(blockno)
             def process_block_event(event,client):
                 try:
                     self.active_block_queries = self.active_block_queries - 1
@@ -146,6 +149,7 @@ class ActiveBlockChain:
             if self.halt == False:
                 cmd = self.rpc.get_block(blockno)
                 cmd.on_result(process_block_event)
+                cmd.on_error(process_block_error)
                 self.active_block_queries = self.active_block_queries + 1
         except Exception,ex:
             self.log.failure("Error in ActiveBlockChain::_get_block : {err!r}",err=str(ex))
