@@ -272,7 +272,7 @@ logger = Logger(observer=observer,namespace="asyncsteem")
 #
 hub = FlagHub(20)
 #
-blockchain = ActiveBlockChain(reactor,log=logger,nodelist="stage")
+blockchain = ActiveBlockChain(reactor,log=logger,nodelist="default")
 steembot = FlagStream(hub)
 blockchain.register_bot(steembot,"flag_stream")
 #

@@ -25,7 +25,7 @@ class DateFinder(object):
         def process_global_config(config_event,cclient):
             on_found(config_event["last_irreversible_block_num"])
         def global_config_error(errno, msg, cclient):
-            self.log.error(msg + "while trying to fetch the global config")
+            self.log.error(msg + " while trying to fetch the global config")
             self(on_found, None)
         if trigger_time == None:
             cmd = self.rpc.get_dynamic_global_properties()

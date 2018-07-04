@@ -37,14 +37,12 @@ def _make_nodesets():
                 sets[nam]["max_batch_size"] = batchsize
                 sets[nam]["prefix_method"] = prefixmethod
     sets["stage"] = dict()
-    sets["stage"]["nodes"] = ["api.steemitdev.com",
-            "api.steemit.com",
+    sets["stage"]["nodes"] = ["api.steemit.com",
             "api.steemitstage.com"]
     sets["stage"]["max_batch_size"] = 16
     sets["stage"]["prefix_method"] = True
     sets["default"] = dict()
-    sets["default"]["nodes"] = ["api.steemitdev.com",
-            "api.steemit.com",
+    sets["default"]["nodes"] = ["api.steemit.com",
             "api.steemitstage.com",
             "rpc.buildteam.io"]
     sets["default"]["max_batch_size"] = 1
