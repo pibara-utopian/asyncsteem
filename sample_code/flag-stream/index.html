@@ -1,50 +1,50 @@
 <html>
-	<head>
-		<title>Flag Stream Monitor</title>
-	        <script type="text/javascript" src="vis.js"></script>
-	</head>
-	<body>
-		<center>
-		<div id="mynetwork"></div>
-		<script type="text/javascript">
-			fetch("/snapshot").then(function(response){
-				response.json().then(function (data) {
-                                    let container = document.getElementById('mynetwork');
-				    let edges = new vis.DataSet(data["edges"]);
-				    let nodes = new vis.DataSet(data["nodes"]);
-                                    let ndata = {
-					nodes: nodes,
-					edges: edges
-				    };
-                                    let network = new vis.Network(container, ndata, {});
-				    let seq = data["seq"]
-				    window.setInterval(function(){
-			                let path = "/updates/" + seq.toString()
-					fetch(path).then(function(update_response){
-					    update_response.json().then(function (update_data) {
-                                                seq = update_data["seq"]
-						let updates = update_data["updates"]
-						for (let index = 0; index < updates.length; index += 1) {
-                                                    let update = updates[index]
-						    if (update["type"] === "add_node") {
-							nodes.add(update["node"])
-					            }
-						    if (update["type"] === "add_edge") {
-                                                        edges.add(update["edge"])
-						    }
-						    if (update["type"] === "drop_node") {
-                                                        nodes.remove({id : update["node"]["id"]});
-						    }
-						    if (update["type"] === "drop_edge") {
-                                                        edges.remove({id : update["edge"]["id"]});
-						    }
-						}
-					    });
-					});
-				    }, 3000);
-				});
-			});
-		</script>
-		</center>
-    </body>
+<head>
+<title>Flag Stream Monitor</title>
+<script type="text/javascript" src="vis.js"></script>
+</head>
+<body>
+<center>
+<div id="mynetwork"></div>
+<script type="text/javascript">
+  fetch("/snapshot").then(function(response){
+    response.json().then(function (data) {
+      let container = document.getElementById('mynetwork');
+      let edges = new vis.DataSet(data["edges"]);
+      let nodes = new vis.DataSet(data["nodes"]);
+      let ndata = {
+	nodes: nodes,
+	edges: edges
+      };
+      let network = new vis.Network(container, ndata, {});
+      let seq = data["seq"]
+      window.setInterval(function(){
+        let path = "/updates/" + seq.toString()
+	fetch(path).then(function(update_response){
+          update_response.json().then(function (update_data) {
+            seq = update_data["seq"]
+	    let updates = update_data["updates"]
+	    for (let index = 0; index < updates.length; index += 1) {
+              let update = updates[index]
+	      if (update["type"] === "add_node") {
+   	        nodes.add(update["node"])
+	      }
+	      if (update["type"] === "add_edge") {
+                edges.add(update["edge"])
+	      }
+	      if (update["type"] === "drop_node") {
+                nodes.remove({id : update["node"]["id"]});
+	      }
+              if (update["type"] === "drop_edge") {
+                edges.remove({id : update["edge"]["id"]});
+              }
+	    }
+	  });
+	});
+      }, 3000);
+    });
+  });
+</script>
+</center>
+</body>
 </html>

@@ -86,7 +86,8 @@ class RpcClient(object):
                                            # with a max_batch_size of 16
                  parallel=16,              #Maximum number of paralel outstanding HTTPS JSON-RPC at any point in time. 
                  rpc_timeout=15,           #Timeout for a single HTTPS JSON-RPC query.
-                 stop_when_empty= False):  #Stop the reactor then the command queue is empty.
+                 stop_when_empty= False,    #Stop the reactor then the command queue is empty.
+                 max_non_rotate = None): 
         """Constructor for asynchonous JSON-RPC client.
         
         Args:
@@ -126,6 +127,8 @@ class RpcClient(object):
         self.queue = list()            #The actual command queue is just a list of sequence numbers.
         self.active_call_count = 0     #The current number of active HTTPS POST calls. 
         self.stop_when_empty = stop_when_empty
+        self.max_non_rotate = max_non_rotate
+        self.non_rotate = 0
         self.log.info("Starting off with node {node!r}.",node = self.nodes[self.node_index])
     def _next_node(self):
         #We may have reason to move on to the next node, check how long ago we did so before and how many errors we have seen since.
@@ -142,9 +145,13 @@ class RpcClient(object):
                 self.errorcount = 0
                 self.log.info("New node is: {node!r}", node=self.nodes[self.node_index])
             else:
-                self.log.error("Can't rotate to different node despite of errors. Node set contains just one node.")
-                self.last_rotate = now
-                self.errorcount = 0
+                self.non_rotate += 1
+                if self.max_non_rotate != None and self.non_rotate >= self.max_non_rotate:
+                    self.reactor.stop()
+                else:
+                    self.log.error("Can't rotate to different node despite of errors. Node set contains just one node.")
+                    self.last_rotate = now
+                    self.errorcount = 0
     def __call__(self):
         """Invoke the object to send out some of the queued commands to a server"""
         dv = None
@@ -202,14 +209,14 @@ class RpcClient(object):
                                     #Call the proper error handler for the request that this response belongs to.
                                     match._handle_error(reply["error"]["code"], msg)
                                 else:
-                                    self.log.error("Error: Invalid JSON-RPC response entry.")
+                                    self.log.error("Error: Invalid JSON-RPC response entry. {node!r}.",node = self.nodes[self.node_index])
                             #del self.entries[reply_id]
                         else:
-                            self.log.error("Error: Invalid JSON-RPC id in entry {rid!r}",rid=reply_id)
+                            self.log.error("Error: Invalid JSON-RPC id in entry {rid!r}. {node!r}",rid=reply_id, node = self.nodes[self.node_index])
                     else:
-                        self.log.error("Error: Invalid JSON-RPC response without id in entry: {reply!r}:",reply=reply)
+                        self.log.error("Error: Invalid JSON-RPC response without id in entry: {reply!r}: {node!r}",reply=reply, node = self.nodes[self.node_index])
                 except Exception as ex:
-                    self.log.failure("Error in _process_one_result {err!r}",err=str(ex))
+                    self.log.failure("Error in _process_one_result {err!r}, {node!r}",err=str(ex), node = self.nodes[self.node_index])
             def handle_response(response):
                 """Handle response for JSON-RPC batch query invocation."""
                 try:
@@ -225,7 +232,7 @@ class RpcClient(object):
                                 results = json.loads(bodystring)
                             except Exception as ex:
                                 #If the result is NON-JSON, may want to move to the next node in the node list
-                                self.log.error("Non-JSON response from server")
+                                self.log.error("Non-JSON response from server {node!r}", node = self.nodes[self.node_index])
                                 self._next_node()
                                 #Add the failed sub-queue back to the command queue, we shall try again soon.
                                 self.queue = subqueue + self.queue
@@ -243,7 +250,7 @@ class RpcClient(object):
                                         ok = True
                                     else:
                                         #Completely unexpected result type, may want to move to the next node in the node list.
-                                        self.log.error("Error: Invalid JSON-RPC response, expecting list as response on batch.")
+                                        self.log.error("Error: Invalid JSON-RPC response, expecting list as response on batch. {node!r}",node = self.nodes[self.node_index])
                                         self._next_node()
                                         #Add the failed sub-queue back to the command queue, we shall try again soon.
                                         self.queue = subqueue + self.queue
@@ -253,9 +260,9 @@ class RpcClient(object):
                                         if request_id in self.entries:
                                             del self.entries[request_id]
                                         else:
-                                            self.log.error("Error: No response entry for request entry in result: {rid!r}.",rid=request_id)
+                                            self.log.error("Error: No response entry for request entry in result: {rid!r}. {node!r}",rid=request_id, node = self.nodes[self.node_index])
                         except Exception as ex:
-                            self.log.failure("Error in cbBody {err!r}",err=str(ex))
+                            self.log.failure("Error in cbBody {err!r}. {node!r}",err=str(ex), node = self.nodes[self.node_index])
                         #This HTTPS POST is now fully processed.
                         self.active_call_count = self.active_call_count - 1
                         #Invoke self, possibly sending new queues RPC calls to the current node
@@ -264,7 +271,7 @@ class RpcClient(object):
                     deferred2.addCallback(cbBody)
                     return deferred2
                 except Exception as ex:
-                    self.log.failure("Error in handle_response {err!r}",err=str(ex))
+                    self.log.failure("Error in handle_response {err!r}. {node!r}",err=str(ex),node = self.nodes[self.node_index])
                     #If something went wrong, the HTTPS POST isn't active anymore.
                     self.active_call_count = self.active_call_count - 1
                     #Invoke self, possibly sending new queues RPC calls to the current node
@@ -277,10 +284,10 @@ class RpcClient(object):
                     if timeoutCall.active():
                         timeoutCall.cancel()
                     #Unexpected error on HTTPS POST, we may want to move to the next node.
-                    self.log.error("Error on HTTPS POST : {cls!r} : {err!r}",cls=error.type.__name__,err=error.getErrorMessage())
+                    self.log.error("Error on HTTPS POST : {cls!r} : {err!r}. {node!r}",cls=error.type.__name__,err=error.getErrorMessage(),node = self.nodes[self.node_index])
                     self._next_node()
                 except Exception as ex:
-                    self.log.failure("Error in _handle_error {err!r}",err=str(ex))
+                    self.log.failure("Error in _handle_error {err!r}. {node!r}",err=str(ex),node = self.nodes[self.node_index])
                 #Add the failed sub-queue back to the command queue, we shall try again soon.
                 self.queue = subqueue + self.queue
                 ##If something went wrong, the HTTPS POST isn't active anymore.
@@ -293,7 +300,7 @@ class RpcClient(object):
             self.active_call_count = self.active_call_count + 1
             return deferred
         except Exception as ex:
-            self.log.failure("Error in _process_batch {err!r}",err=str(ex))
+            self.log.failure("Error in _process_batch {err!r}. {node!r}",err=str(ex),node = self.nodes[self.node_index])
     def __getattr__(self, name):
         def addQueueEntry(*args):
             """Return a new in-queue JSON-RPC command invocation object with auto generated command name from __getattr__."""

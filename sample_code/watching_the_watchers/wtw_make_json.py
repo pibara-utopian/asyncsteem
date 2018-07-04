@@ -157,7 +157,7 @@ log = Logger(observer=obs,namespace="asyncsteem")
 days = 8
 if time.gmtime().tm_hour > 11:
     days = 7
-bc = ActiveBlockChain(reactor,rewind_days=days,day_limit=1,log=log,nodelist="stage",stop_when_empty=True)
+bc = ActiveBlockChain(reactor,rewind_days=days,day_limit=1,log=log,nodelist="default",stop_when_empty=True)
 count = Count(mypath)
 tb = TestBot(count)
 bc.register_bot(tb,"testbot")

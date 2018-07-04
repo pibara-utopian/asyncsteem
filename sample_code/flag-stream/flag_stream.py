@@ -6,7 +6,6 @@ from twisted.logger import Logger, textFileLogObserver
 from twisted.web import server,resource
 from twisted.web.static import File
 from datetime import datetime
-from twisted.internet.task import LoopingCall
 from asyncsteem import ActiveBlockChain
 from os.path import join, dirname, realpath
 
@@ -169,7 +168,7 @@ class FlagHub:
             if edge["from"] == f and edge["to"] == t:
                 #Update the 'upd'field indicating the update during the current event sequence.
                 edge["upd"] = seq
-    def flag(self,voter,author,time):
+    def flag(self,voter,author):
         #Get a unique (incremental) sequence number for this flag event.
         seq = self._get_seq()
         #We haven't added any node (yet)
@@ -231,7 +230,7 @@ class Updates(resource.Resource):
     isLeaf = False
     def __init__(self,hub):
         self.hub = hub
-        self.children = ["/1"]
+        self.children = []
     def getChild(self, name, request):
         try:
             return DesignatedUpdates(self.hub,int(name))
@@ -265,7 +264,7 @@ class FlagStream:
         self.hub = hub
     def vote(self,tm,vote_event,client):
         if vote_event["weight"] < 0:
-            self.hub.flag(vote_event["voter"],vote_event["author"],tm)
+            self.hub.flag(vote_event["voter"],vote_event["author"])
 
 mypath = dirname(realpath(__file__))
 observer = textFileLogObserver(io.open(join(mypath,"flag_stream.log"), "a"))
