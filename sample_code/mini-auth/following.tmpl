@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Mini-Auth demo asyncsteem</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="http://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css" rel="stylesheet" media="screen">
+    <style type="text/css">
+      .container {
+        max-width: 500px;
+        padding-top: 150px;
+      }
+    </style>
+    <meta http-equiv="refresh" content="90">
+  </head>
+  <body>
+    <div class="container">
+        <p>
+	  <h3>Inactive accounts followed by you ({{authenticated}})</h3>
+          <ol>
+          {% for result in results %}
+             <li><A HREF="https://steemit.com/@{{ result.name }}">@{{ result.name }}</A>  {{ result.inactive }}  days since last post.
+          {% endfor %}
+          </ol>
+        </p>
+        <p>Currently running <b>{{behind}}</b> behind on the blockchain.</p>
+    </div>
+    <script src="http://code.jquery.com/jquery-1.10.2.min.js"></script>
+    <script src="http://netdna.bootstrapcdn.com/bootstrap/3.0.0/js/bootstrap.min.js"></script>
+  </body>
+</html>
