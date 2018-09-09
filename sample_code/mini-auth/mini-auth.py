@@ -90,7 +90,7 @@ class CookieUtil:
         behind = datetime.utcnow() - self.last_blocktime
         return str(behind)
 
-def report_on_followers(request,steemaccount,cu,reactor,log,template):
+def report_on_followers(request,steemaccount,cu,reactor,log,template,etemplate):
     def process_following(event,client):
         def process_accounts(event2,client2):
             stale_accounts = []
@@ -104,8 +104,8 @@ def report_on_followers(request,steemaccount,cu,reactor,log,template):
             request.write(html.encode("ascii")) 
             request.finish()
         def process_accounts_err(errno,msg,client):
-            request.write('FAIL (account)\n')
-            request.write(msg)
+            html = etemplate.render(message=msg)
+            request.write(html.encode("ascii"))
             request.finish()
         accountlist = [];
         for entry in event:
@@ -114,8 +114,8 @@ def report_on_followers(request,steemaccount,cu,reactor,log,template):
         opp2.on_result(process_accounts)
         opp2.on_error(process_accounts_err)
     def process_following_err(errno,msg,client):
-        request.write('FAIL (following)\n')
-        request.write(msg)
+        html = etemplate.render(message=msg)
+        request.write(html.encode("ascii"))
         request.finish()
     client = RpcClient(reactor,log,stop_when_empty=False,rpc_timeout=40)
     opp = client.get_following(steemaccount,"","blog",1000)
@@ -160,7 +160,8 @@ class SteemAuth(resource.Resource):
                     self.log.info("Cookie matches authenticated steemit user")
                     req = request
                     template = self.templates["following"]
-                    report_on_followers(req,steemaccount,cu,self.reactor,self.log,template)
+                    etemplate = self.templates["error"]
+                    report_on_followers(req,steemaccount,cu,self.reactor,self.log,template,etemplate)
                 return
             sa.addCallback(get_steemacount_from_redis)
             return server.NOT_DONE_YET
@@ -181,6 +182,7 @@ class MiniAuthWebServer(resource.Resource):
         self.templates = dict();
         self.templates["askauth"] = j2_env.get_template('authenticate.tmpl')
         self.templates["following"] = j2_env.get_template('following.tmpl')
+        self.templates["error"] = j2_env.get_template('error.tmpl')
     def getChild(self, name, request):
         if request.uri == '/steemauth':
             return SteemAuth(cu, self.account,self.templates,self.reactor, self.log)
