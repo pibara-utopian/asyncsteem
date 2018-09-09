@@ -14,16 +14,22 @@ from asyncsteem import ActiveBlockChain, RpcClient
 from os.path import join, dirname, realpath
 from pyblake2 import blake2b
 from random import randint
-import redis
+from cyclone import redis
 from jinja2 import Environment, FileSystemLoader
 
 #This is our hub class that is used both from the blockchain streamer and from the web server.
 class CookieUtil:
-    def __init__(self,secret):
+    def __init__(self,secret,logger):
+        def setDb(db):
+            self.db = db
+            self.logger.info("Connected to Redis")
         #We use a secret for BLAKE2 signing of our cookies
         self.secret = secret.encode("ascii")
+        self.logger = logger
         #The local Redis is used to keep a persistent store of cookie to authenticated user mappings
-        self.db = redis.StrictRedis()
+        self.db = None
+        d = redis.Connection()
+        d.addCallback(setDb)
         #Try to keep a record of how far behind we are.
         self.last_blocktime = datetime.utcfromtimestamp(0)
     def new_cookie(self):
@@ -49,7 +55,7 @@ class CookieUtil:
             #If the cookie is OK, keep a record of when this cookie was last used in our Redis server.
             k = cookie_id + "-lastvisit"
             v = str(time.time())
-            self.db.set(k,v)
+            d=self.db.set(k,v)
         return ok
     def authenticated_user(self,cookie_id):
         #Look up if the cookie is linked to an authenticated user.
@@ -62,12 +68,23 @@ class CookieUtil:
         #If we register a potentially authenticating transfer in the blochchain 
         k1 = memo[:40] + "-lastvisit"
         k2 = memo[:40] + "-steemauth"
-        lasttime = self.db.get(k1)
-        account = self.db.get(k2)
-        #If the memo holds a valid cookie id that has never been registered to any steem account before
-        if account == None and not lasttime == None:
-            #Store the cookie steem-account mapping.
-            self.db.set(k2,frm)
+        ltp = self.db.get(k1)
+        def process_last_time(lasttime):
+            if lasttime != None:
+                self.logger.info("Known cookie id in transaction.")
+                acp = self.db.get(k2)
+                def process_account(account):
+                    #If the memo holds a valid cookie id that has never been registered to any steem account before
+                    if account == None:
+                        #Store the cookie steem-account mapping.
+                        d=self.db.set(k2,frm)
+                        self.logger.info("Cookie has now been linked to a steemit user.")
+                    else:
+                        self.logger.info("This particular cookie id was already registered to a steem user before.")
+                acp.addCallback(process_account)
+            else:
+                self.logger.info("Transaction without valid cookie id")
+        ltp.addCallback(process_last_time)
     def behind_string(self):
         #Return how many time has passed since last block we saw.
         behind = datetime.utcnow() - self.last_blocktime
@@ -129,18 +146,24 @@ class SteemAuth(resource.Resource):
         oldcookie = request.getCookie("steemauth")
         if cu.valid_cookie(oldcookie):
             cookie_id = oldcookie.split("-")[0]
-            steemaccount = self.cu.authenticated_user(cookie_id)
-            if steemaccount == None:
-                rv = self.templates["askauth"].render(account=account,
-                        session=cookie_id, 
-                        behind=cu.behind_string()
+            sa = self.cu.authenticated_user(cookie_id)
+            def get_steemacount_from_redis(steemaccount):
+                if steemaccount == None:
+                    self.log.info("Cookie not assigned to any steemit user")
+                    rv = self.templates["askauth"].render(account=account,
+                            session=cookie_id, 
+                            behind=cu.behind_string()
                         )
-                return rv.encode("ascii")
-            else:
-                req = request
-                template = self.templates["following"]
-                report_on_followers(req,steemaccount,cu,self.reactor,self.log,template)
-                return server.NOT_DONE_YET
+                    request.write(rv.encode("ascii"))
+                    request.finish()
+                else:
+                    self.log.info("Cookie matches authenticated steemit user")
+                    req = request
+                    template = self.templates["following"]
+                    report_on_followers(req,steemaccount,cu,self.reactor,self.log,template)
+                return
+            sa.addCallback(get_steemacount_from_redis)
+            return server.NOT_DONE_YET
         else:
             newcookie = self.cu.new_cookie()
             request.addCookie("steemauth",newcookie)
@@ -187,7 +210,7 @@ account = conf["account"]
 observer = textFileLogObserver(io.open(join(mypath,"mini-auth.log"), "a"))
 logger = Logger(observer=observer,namespace="asyncsteem")
 blockchain = ActiveBlockChain(reactor,log=logger,nodelist="default")
-cu = CookieUtil(secret)
+cu = CookieUtil(secret,logger)
 steembot = TransferStream(cu,account)
 blockchain.register_bot(steembot,"flag_stream")
 root = MiniAuthWebServer(cu,account,reactor,logger)
