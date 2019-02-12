@@ -1,4 +1,4 @@
 {
-  "recovery_account": ["steem", "anonsteem", "blocktrades"],
+  "recovery_account": ["steem", "anonsteem", "blocktrades", "emrebeyler"],
   "flag": ["spaminator", "steemcleaners", "mack-bot", "cheetah"]
 }
